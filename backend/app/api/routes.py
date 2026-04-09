@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from app.core.database import get_db
 from app.models.subscriber import Subscriber
+from app.tasks.digest_tasks import run_daily_digest
 
 router = APIRouter()
 
@@ -42,3 +43,9 @@ def unsubscribe(request: SubscribeRequest, db: Session = Depends(get_db)):
     subscriber.is_active = False
     db.commit()
     return {"message": "You have been unsubscribed from Daily AI Digest."}
+
+
+@router.post("/trigger-digest")
+def trigger_digest():
+    task = run_daily_digest.delay()
+    return {"message": "Daily digest task triggered", "task_id": task.id}
