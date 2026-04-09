@@ -20,3 +20,6 @@ for i, s in enumerate(summaries, 1):
     print(f"\nSummary: {s.get('simple_summary')}")
     print(f"\nWhy it matters: {s.get('why_it_matters')}")
     print(f"\nLink: {s.get('link')}")
+
+
+

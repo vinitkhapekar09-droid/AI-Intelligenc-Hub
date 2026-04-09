@@ -1,17 +1,16 @@
 import json
 import time
+import mlflow
 from google import genai
 from app.core.config import settings
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
-MODEL_CANDIDATES = [
-    "gemini-3.1-flash-lite-preview",
-]
+
+mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URL)
+mlflow.set_experiment("daily-ai-digest")
 
 
 def build_prompt(items: list[dict]) -> str:
-    """Build the prompt we send to Gemini for summarization."""
-
     items_text = ""
     for i, item in enumerate(items, 1):
         items_text += f"""
@@ -21,6 +20,7 @@ Summary: {item["summary"][:500]}
 Source: {item["source"]}
 Link: {item["link"]}
 """
+
     prompt = f"""
 You are an AI newsletter writer. Your job is to explain recent AI/ML research and news in very simple language for a general audience.
 
@@ -39,50 +39,48 @@ Items:
 
 
 def summarize_items(items: list[dict]) -> list[dict]:
-    """Sends the items to Gemini and gets back the summarized version."""
-
     if not items:
         return []
 
     items = items[:5]
     prompt = build_prompt(items)
 
-    try:
-        response = None
-        latency = None
-        last_error = None
+    with mlflow.start_run():
+        try:
+            start_time = time.time()
 
-        for model_name in MODEL_CANDIDATES:
-            try:
-                start_time = time.time()
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                )
-                latency = round(time.time() - start_time, 2)
-                print(f"[summarizer] Using model: {model_name}")
-                break
-            except Exception as e:
-                last_error = e
+            response = client.models.generate_content(
+                model="gemini-3.1-flash-lite-preview", contents=prompt
+            )
 
-        if response is None:
-            raise last_error or RuntimeError("No Gemini model could be used")
+            latency = round(time.time() - start_time, 2)
+            raw_text = response.text.strip()
 
-        raw_text = (response.text or "").strip()
+            if raw_text.startswith("```"):
+                raw_text = raw_text.split("```")[1]
+                if raw_text.startswith("json"):
+                    raw_text = raw_text[4:]
 
-        if raw_text.startswith("```"):
-            raw_text = raw_text.split("```")[1]
-            if raw_text.startswith("json"):
-                raw_text = raw_text[4:]
+            summaries = json.loads(raw_text)
 
-        summaries = json.loads(raw_text)
+            # Log to MLflow
+            mlflow.log_param("model", "gemini-3.1-flash-lite-preview")
+            mlflow.log_param("num_input_items", len(items))
+            mlflow.log_param("prompt_length", len(prompt))
+            mlflow.log_metric("latency_seconds", latency)
+            mlflow.log_metric("num_summaries_returned", len(summaries))
+            mlflow.log_text(prompt, "prompt.txt")
+            mlflow.log_text(raw_text, "response.txt")
 
-        print(f"[summarizer] Got {len(summaries)} summaries in {latency}s")
-        return summaries
-    except json.JSONDecodeError as e:
-        print(f"[summarizer] JSON decode error: {e}")
-        print(f"Raw response was: {(response.text or '')[:300]}")
-        return []
-    except Exception as e:
-        print(f"[summarizer] Error during summarization: {e}")
-        return []
+            print(f"[summarizer] Got {len(summaries)} summaries in {latency}s")
+            return summaries
+
+        except json.JSONDecodeError as e:
+            mlflow.log_param("error", f"JSON parse error: {e}")
+            print(f"[summarizer] JSON parse error: {e}")
+            return []
+
+        except Exception as e:
+            mlflow.log_param("error", str(e))
+            print(f"[summarizer] Gemini error: {e}")
+            return []
