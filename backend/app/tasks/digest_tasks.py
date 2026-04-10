@@ -1,9 +1,9 @@
-from app.core.celery_app import celery_app
-from app.core.database import SessionLocal
-from app.models.subscriber import Subscriber
-from app.services.fetcher import fetch_all_items
-from app.services.summarizer import summarize_items
-from app.services.email_sender import send_digest_to_all
+from ..core.celery_app import celery_app
+from ..core.database import SessionLocal
+from ..models.subscriber import Subscriber
+from ..services.fetcher import fetch_all_items
+from ..services.summarizer import summarize_items
+from ..services.email_sender import send_digest_to_all
 
 
 @celery_app.task(name="app.tasks.digest_task.run_daily_digest")

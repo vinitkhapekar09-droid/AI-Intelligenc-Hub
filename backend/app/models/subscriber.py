@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from datetime import datetime, timezone
-from app.core.database import Base
+from ..core.database import Base
 
 
 class Subscriber(Base):

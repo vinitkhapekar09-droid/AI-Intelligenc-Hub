@@ -1,12 +1,12 @@
 from celery import Celery
 from celery.schedules import crontab
-from app.core.config import settings
+from .config import settings
 
 celery_app = Celery(
     "daily_ai_digest",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.digest_tasks"],
+    include=["backend.app.tasks.digest_tasks"],
 )
 
 celery_app.conf.update(
