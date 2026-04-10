@@ -1,0 +1,32 @@
+[
+  {
+    "headline": "A Smarter Way for AI to Remember 3D Scenes",
+    "simple_summary": "Researchers found a way for AI to build 3D models of environments without forgetting what it learned earlier. It uses a new memory technique that keeps the AI's knowledge stable while it processes long sequences of information.",
+    "why_it_matters": "This makes it much easier for robots and virtual reality systems to understand and navigate complex, real-world spaces without getting confused.",
+    "link": "https://arxiv.org/abs/2604.07350v1"
+  },
+  {
+    "headline": "The Limits of How AI Makes Decisions",
+    "simple_summary": "This research looks at how we can mathematically prove which pieces of information an AI truly needs to make a decision. The authors discovered that there are some hard limits to how efficiently we can check these decision-making steps.",
+    "why_it_matters": "Understanding these limits helps us build more reliable and transparent AI systems, ensuring we know exactly why an AI chose a specific action.",
+    "link": "https://arxiv.org/abs/2604.07349v1"
+  },
+  {
+    "headline": "New Tool for Realistic AI Video Control",
+    "simple_summary": "MoRight is a new method that lets you control both a camera's movement and the objects in a video separately. It makes sure that if an object moves, everything else in the scene reacts realistically rather than just looking like a glitch.",
+    "why_it_matters": "This technology could revolutionize film and game design, allowing creators to generate complex, physics-accurate scenes simply by telling the AI what should happen.",
+    "link": "https://arxiv.org/abs/2604.07348v1"
+  },
+  {
+    "headline": "Tracking the Energy Cost of AI",
+    "simple_summary": "As AI gets bigger, it uses massive amounts of electricity. This paper provides a new way for data centers to measure exactly how much power specific AI tasks use so they can plan their energy needs better.",
+    "why_it_matters": "By better understanding how much power AI really consumes, we can build more sustainable data centers and reduce the environmental impact of large-scale computing.",
+    "link": "https://arxiv.org/abs/2604.07345v1"
+  },
+  {
+    "headline": "Teaching AI to Understand Your Unique Preferences",
+    "simple_summary": "AI models are often trained to be generally helpful, but they don't always cater to what you specifically like. This new benchmark helps test if AI can actually learn and prioritize an individual user's personal values and preferences.",
+    "why_it_matters": "This leads to AI assistants that feel more like personalized companions rather than generic tools, offering help that is tailored to your specific taste and needs.",
+    "link": "https://arxiv.org/abs/2604.07343v1"
+  }
+]
