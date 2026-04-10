@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
-from app.api.routes import router
-from app.core.database import Base, engine
+from .api.routes import router
+from .core.database import Base, engine
 
 Base.metadata.create_all(bind=engine)
 
