@@ -1,9 +1,9 @@
-from app.core.celery_app import celery_app
-from app.core.database import SessionLocal
-from app.models.subscriber import Subscriber
-from app.services.fetcher import fetch_all_items
-from app.services.summarizer import summarize_items
-from app.services.email_sender import send_digest_to_all
+from ..core.celery_app import celery_app
+from ..core.database import SessionLocal
+from ..models.subscriber import Subscriber
+from ..services.fetcher import fetch_all_items
+from ..services.summarizer import summarize_items
+from ..services.email_sender import send_digest_to_all
 
 
 @celery_app.task(name="app.tasks.digest_task.run_daily_digest")
@@ -25,7 +25,7 @@ def run_daily_digest():
     # Step 3: Get all active subscribers from DB
     db = SessionLocal()
     try:
-        subscribers = db.query(Subscriber).filter(Subscriber.is_active == True).all()
+        subscribers = db.query(Subscriber).filter(Subscriber.is_active.is_(True)).all()
         emails = [s.email for s in subscribers]
     finally:
         db.close()

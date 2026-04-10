@@ -1,6 +1,5 @@
 import httpx
-from datetime import datetime, timezone
-from app.core.config import settings
+from ..core.config import settings
 
 
 def fetch_arxiv_papers(max_results: int = 5) -> list[dict]:
