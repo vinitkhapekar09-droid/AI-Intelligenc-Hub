@@ -25,7 +25,7 @@ def run_daily_digest():
     # Step 3: Get all active subscribers from DB
     db = SessionLocal()
     try:
-        subscribers = db.query(Subscriber).filter(Subscriber.is_active == True).all()
+        subscribers = db.query(Subscriber).filter(Subscriber.is_active.is_(True)).all()
         emails = [s.email for s in subscribers]
     finally:
         db.close()
