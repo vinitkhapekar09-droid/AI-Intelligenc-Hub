@@ -62,11 +62,7 @@ def run_daily_digest():
     # ----------------------------------------------------------------
     db = SessionLocal()
     try:
-        subscribers = (
-            db.query(Subscriber)
-            .filter(Subscriber.is_active.is_(True))
-            .all()
-        )
+        subscribers = db.query(Subscriber).filter(Subscriber.is_active.is_(True)).all()
         emails = [s.email for s in subscribers]
     except SQLAlchemyError as e:
         # Local/manual runs may not have Postgres running;
