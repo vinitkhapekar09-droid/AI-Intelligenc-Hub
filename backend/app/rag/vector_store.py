@@ -25,7 +25,8 @@ COLLECTION_NAME = "ai_hub_documents"
 # and could cause file lock conflicts with ChromaDB's SQLite backend.
 _client = chromadb.PersistentClient(
     path=CHROMA_PATH,
-    settings=ChromaSettings(anonymized_telemetry=False),  # Don't send usage data
+    # Don't send usage data
+    settings=ChromaSettings(anonymized_telemetry=False),
 )
 
 
@@ -37,7 +38,8 @@ def get_collection():
     """
     return _client.get_or_create_collection(
         name=COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"},  # cosine similarity for text embeddings
+        # cosine similarity for text embeddings
+        metadata={"hnsw:space": "cosine"},
     )
 
 
@@ -64,10 +66,10 @@ def store_chunks(embedded_chunks: list[dict]) -> int:
     total_stored = 0
 
     for i in range(0, len(embedded_chunks), batch_size):
-        batch_ids = ids[i : i + batch_size]
-        batch_embeddings = embeddings[i : i + batch_size]
-        batch_documents = documents[i : i + batch_size]
-        batch_metadatas = metadatas[i : i + batch_size]
+        batch_ids = ids[i:i + batch_size]
+        batch_embeddings = embeddings[i:i + batch_size]
+        batch_documents = documents[i:i + batch_size]
+        batch_metadatas = metadatas[i:i + batch_size]
 
         collection.upsert(
             ids=batch_ids,
@@ -111,7 +113,8 @@ def search(query: str, n_results: int = 5, doc_type: str = None) -> list[dict]:
 
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=min(n_results, collection.count()),  # can't ask for more than exists
+        # can't ask for more than exists
+        n_results=min(n_results, collection.count()),
         where=where_filter,
         include=["documents", "metadatas", "distances"],
     )
