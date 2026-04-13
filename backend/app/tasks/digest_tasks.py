@@ -3,10 +3,12 @@
 # WHY THIS FILE EXISTS:
 # This is the Celery task that orchestrates the entire daily pipeline.
 # It runs on a schedule (7AM IST via Celery Beat) and ties together
-# all services: fetching, normalizing, summarizing, emailing, and RAG ingestion.
+# all services: fetching, normalizing, summarizing, emailing,
+# and RAG ingestion.
 #
 # DESIGN PRINCIPLE: Each step is independent.
-# If RAG ingestion fails, the email was already sent — subscribers are unaffected.
+# If RAG ingestion fails, the email was already sent
+# and subscribers are unaffected.
 # If summarization fails, we abort early and log it — no partial emails sent.
 
 from ..core.celery_app import celery_app
@@ -60,10 +62,15 @@ def run_daily_digest():
     # ----------------------------------------------------------------
     db = SessionLocal()
     try:
-        subscribers = db.query(Subscriber).filter(Subscriber.is_active.is_(True)).all()
+        subscribers = (
+            db.query(Subscriber)
+            .filter(Subscriber.is_active.is_(True))
+            .all()
+        )
         emails = [s.email for s in subscribers]
     except SQLAlchemyError as e:
-        # Local/manual runs may not have Postgres running; don't fail the whole digest.
+        # Local/manual runs may not have Postgres running;
+        # don't fail the whole digest.
         print(f"[task] Subscriber lookup failed; skipping email send: {e}")
         emails = []
     finally:
@@ -83,7 +90,7 @@ def run_daily_digest():
     # ----------------------------------------------------------------
     rag_result = _ingest_into_rag(documents)
 
-    print(f"[task] Pipeline complete.")
+    print("[task] Pipeline complete.")
     return {
         "status": "done",
         "documents_fetched": len(raw_items),
