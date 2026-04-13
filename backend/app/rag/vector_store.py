@@ -11,11 +11,13 @@
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from .embedder import embed_text
+from ..core.config import settings
+
 
 # WHY this path?
 # /tmp/chroma is writable in Docker containers and Codespaces.
 # In production (DigitalOcean), we'll mount a persistent volume here.
-CHROMA_PATH = "/tmp/chroma"
+CHROMA_PATH = settings.CHROMA_PATH
 COLLECTION_NAME = "ai_hub_documents"
 
 # Module-level client — created once, reused across all calls.
