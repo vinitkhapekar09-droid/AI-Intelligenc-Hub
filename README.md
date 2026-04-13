@@ -85,7 +85,7 @@ daily-ai-digest/
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/YOUR_USERNAME/daily-ai-digest.git
+git clone https://github.com/Vinitkhapekar/daily-ai-digest.git
 cd daily-ai-digest
 ```
 
