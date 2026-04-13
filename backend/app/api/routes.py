@@ -92,9 +92,6 @@ def get_daily_digest():
     WHY this endpoint? Useful for a frontend dashboard or status check
     without triggering a full pipeline run.
     """
-    from ..tasks.digest_tasks import run_daily_digest
-    from ..rag.vector_store import get_collection_stats
-
     stats = get_collection_stats()
     return {
         "status": "ok",

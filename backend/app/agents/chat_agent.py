@@ -46,7 +46,7 @@ CONTEXT:
 QUESTION:
 {question}
 
-Provide a clear, concise answer (2-4 sentences). 
+Provide a clear, concise answer (2-4 sentences).
 If relevant, mention which sources support your answer.
 """
 
