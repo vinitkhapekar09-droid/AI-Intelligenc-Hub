@@ -56,7 +56,7 @@ nbdime==4.0.2
 nbformat==5.10.4
 nest-asyncio==1.6.0
 notebook_shim==0.2.4
-packaging==25.0
+packaging==24.2
 pandocfilters==1.5.1
 parso==0.8.5
 pexpect==4.9.0
@@ -117,3 +117,5 @@ mlflow==3.11.1
 sentence-transformers==3.4.1
 chromadb==1.0.9
 groq==0.28.0
+streamlit==1.45.0
+flower==2.0.1

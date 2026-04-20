@@ -60,6 +60,8 @@ services:
       - DATABASE_URL=postgresql://digest_user:password123@db:5432/daily_digest
       - REDIS_URL=redis://redis:6379/0
       - MLFLOW_TRACKING_URL=http://mlflow:5000
+    volumes:
+      - chroma_data:/tmp/chroma
 
   # ── Celery Worker ─────────────────────────────────────────
   worker:
@@ -80,6 +82,8 @@ services:
       - DATABASE_URL=postgresql://digest_user:password123@db:5432/daily_digest
       - REDIS_URL=redis://redis:6379/0
       - MLFLOW_TRACKING_URL=http://mlflow:5000
+    volumes:
+    - chroma_data:/tmp/chroma
 
   # ── Celery Beat ───────────────────────────────────────────
   beat:
