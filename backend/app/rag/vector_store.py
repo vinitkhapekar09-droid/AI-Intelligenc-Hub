@@ -66,10 +66,10 @@ def store_chunks(embedded_chunks: list[dict]) -> int:
     total_stored = 0
 
     for i in range(0, len(embedded_chunks), batch_size):
-        batch_ids = ids[i : i + batch_size]
-        batch_embeddings = embeddings[i : i + batch_size]
-        batch_documents = documents[i : i + batch_size]
-        batch_metadatas = metadatas[i : i + batch_size]
+        batch_ids = ids[i:i + batch_size]
+        batch_embeddings = embeddings[i:i + batch_size]
+        batch_documents = documents[i:i + batch_size]
+        batch_metadatas = metadatas[i:i + batch_size]
 
         collection.upsert(
             ids=batch_ids,
