@@ -6,9 +6,11 @@
 
 import streamlit as st
 import requests
+import os
 
-# --- Configuration ---
-API_BASE = "http://localhost:8000"  # FastAPI backend URL
+API_BASE = os.getenv("API_BASE", "http://localhost:8000")
+# WHY? In Docker, API is at http://api:8000. Locally it's localhost:8000.
+# Environment variable lets us switch without changing code.
 
 st.set_page_config(
     page_title="AI Intelligence Hub",
