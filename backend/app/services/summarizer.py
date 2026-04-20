@@ -1,13 +1,65 @@
 import json
+import socket
 import time
+from contextlib import contextmanager
+from urllib.parse import urlparse
+
 import mlflow
 from google import genai
 from ..core.config import settings
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URL)
-mlflow.set_experiment("daily-ai-digest")
+
+def _init_mlflow() -> bool:
+    """Initialize MLflow once; disable tracking if the server is unavailable."""
+    parsed = urlparse(settings.MLFLOW_TRACKING_URL)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+    if host:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                pass
+        except OSError:
+            print(
+                f"[summarizer] MLflow unreachable at {settings.MLFLOW_TRACKING_URL}; "
+                "continuing without tracking"
+            )
+            return False
+
+    try:
+        mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URL)
+        mlflow.set_experiment("daily-ai-digest")
+        return True
+    except Exception as e:
+        print(f"[summarizer] MLflow unavailable; continuing without tracking: {e}")
+        return False
+
+
+@contextmanager
+def _mlflow_run(enabled: bool):
+    if not enabled:
+        yield
+        return
+
+    try:
+        with mlflow.start_run():
+            yield
+    except Exception as e:
+        # Logging failures must never fail digest generation.
+        print(f"[summarizer] MLflow run failed; continuing without tracking: {e}")
+        yield
+
+
+def _mlflow_log(enabled: bool, log_fn, *args, **kwargs) -> None:
+    if not enabled:
+        return
+
+    try:
+        log_fn(*args, **kwargs)
+    except Exception as e:
+        print(f"[summarizer] MLflow log failed: {e}")
 
 
 def build_prompt(items: list[dict]) -> str:
@@ -42,10 +94,11 @@ def summarize_items(items: list[dict]) -> list[dict]:
     if not items:
         return []
 
+    mlflow_enabled = _init_mlflow()
     items = items[:5]
     prompt = build_prompt(items)
 
-    with mlflow.start_run():
+    with _mlflow_run(mlflow_enabled):
         try:
             start_time = time.time()
 
@@ -64,23 +117,35 @@ def summarize_items(items: list[dict]) -> list[dict]:
             summaries = json.loads(raw_text)
 
             # Log to MLflow
-            mlflow.log_param("model", "gemini-3.1-flash-lite-preview")
-            mlflow.log_param("num_input_items", len(items))
-            mlflow.log_param("prompt_length", len(prompt))
-            mlflow.log_metric("latency_seconds", latency)
-            mlflow.log_metric("num_summaries_returned", len(summaries))
-            mlflow.log_text(prompt, "prompt.txt")
-            mlflow.log_text(raw_text, "response.txt")
+            _mlflow_log(
+                mlflow_enabled,
+                mlflow.log_param,
+                "model",
+                "gemini-3.1-flash-lite-preview",
+            )
+            _mlflow_log(mlflow_enabled, mlflow.log_param, "num_input_items", len(items))
+            _mlflow_log(mlflow_enabled, mlflow.log_param, "prompt_length", len(prompt))
+            _mlflow_log(mlflow_enabled, mlflow.log_metric, "latency_seconds", latency)
+            _mlflow_log(
+                mlflow_enabled,
+                mlflow.log_metric,
+                "num_summaries_returned",
+                len(summaries),
+            )
+            _mlflow_log(mlflow_enabled, mlflow.log_text, prompt, "prompt.txt")
+            _mlflow_log(mlflow_enabled, mlflow.log_text, raw_text, "response.txt")
 
             print(f"[summarizer] Got {len(summaries)} summaries in {latency}s")
             return summaries
 
         except json.JSONDecodeError as e:
-            mlflow.log_param("error", f"JSON parse error: {e}")
+            _mlflow_log(
+                mlflow_enabled, mlflow.log_param, "error", f"JSON parse error: {e}"
+            )
             print(f"[summarizer] JSON parse error: {e}")
             return []
 
         except Exception as e:
-            mlflow.log_param("error", str(e))
+            _mlflow_log(mlflow_enabled, mlflow.log_param, "error", str(e))
             print(f"[summarizer] Gemini error: {e}")
             return []

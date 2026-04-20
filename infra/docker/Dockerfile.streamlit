@@ -1,0 +1,19 @@
+# Dockerfile.streamlit
+# Lightweight image just for the Streamlit frontend.
+# WHY separate from the backend Dockerfile?
+# Frontend only needs streamlit + requests — no need for
+# heavy backend deps like psycopg2, celery, mlflow etc.
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install only what the frontend needs
+RUN pip install streamlit==1.45.0 requests==2.32.5 --no-cache-dir
+
+# Copy frontend code
+COPY frontend/ .
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
