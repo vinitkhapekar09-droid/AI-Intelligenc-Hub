@@ -83,7 +83,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - MLFLOW_TRACKING_URL=http://mlflow:5000
     volumes:
-    - chroma_data:/tmp/chroma
+      - chroma_data:/tmp/chroma
 
   # ── Celery Beat ───────────────────────────────────────────
   beat:
