@@ -26,7 +26,7 @@ from ..rag.embedder import embed_chunks
 from ..rag.vector_store import store_chunks
 
 
-@celery_app.task(name="app.tasks.digest_task.run_daily_digest")
+@celery_app.task(name="app.tasks.digest_tasks.run_daily_digest")
 def run_daily_digest():
     print("[task] Starting daily digest pipeline...")
 

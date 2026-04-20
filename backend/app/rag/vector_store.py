@@ -99,25 +99,32 @@ def search(query: str, n_results: int = 5, doc_type: str = None) -> list[dict]:
     The query must be in the same vector space as the stored chunks.
     We use the same embed_text() function for consistency.
     """
-    collection = get_collection()
+    try:
+        collection = get_collection()
 
-    # Don't search an empty collection — Chroma throws an error
-    if collection.count() == 0:
-        print("[vector_store] Collection is empty, nothing to search.")
+        # Don't search an empty collection — Chroma throws an error
+        total = collection.count()
+        if total == 0:
+            print("[vector_store] Collection is empty, nothing to search.")
+            return []
+
+        query_embedding = embed_text(query)
+
+        # Build optional metadata filter
+        where_filter = {"doc_type": doc_type} if doc_type else None
+
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            # can't ask for more than exists
+            n_results=min(n_results, total),
+            where=where_filter,
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception as e:
+        # Local/dev environments can lose Chroma index files (e.g., temp dir cleanup).
+        # Fail open so API returns a helpful fallback response instead of 500.
+        print(f"[vector_store] Search failed, returning no results: {e}")
         return []
-
-    query_embedding = embed_text(query)
-
-    # Build optional metadata filter
-    where_filter = {"doc_type": doc_type} if doc_type else None
-
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        # can't ask for more than exists
-        n_results=min(n_results, collection.count()),
-        where=where_filter,
-        include=["documents", "metadatas", "distances"],
-    )
 
     # Reformat into clean list of dicts for the rest of the app
     chunks = []
@@ -139,9 +146,15 @@ def get_collection_stats() -> dict:
     Returns basic stats about the vector store.
     Used by the /health and /metrics endpoints.
     """
-    collection = get_collection()
+    try:
+        collection = get_collection()
+        total_chunks = collection.count()
+    except Exception as e:
+        print(f"[vector_store] Stats unavailable: {e}")
+        total_chunks = 0
+
     return {
-        "total_chunks": collection.count(),
+        "total_chunks": total_chunks,
         "collection_name": COLLECTION_NAME,
         "storage_path": CHROMA_PATH,
     }

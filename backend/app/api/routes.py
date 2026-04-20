@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 from ..core.database import get_db
 from ..models.subscriber import Subscriber
 from ..rag.vector_store import get_collection_stats
@@ -20,36 +22,58 @@ def health_check():
 
 @router.post("/subscribe")
 def subscribe(request: SubscribeRequest, db: Session = Depends(get_db)):
-    existing = db.query(Subscriber).filter(Subscriber.email == request.email).first()
-    if existing:
-        if existing.is_active:
-            raise HTTPException(status_code=400, detail="Email already subscribed")
-        else:
-            existing.is_active = True
-            db.commit()
-            return {"message": "Welcome back! Subscription reactivated."}
-    subscriber = Subscriber(email=request.email)
-    db.add(subscriber)
-    db.commit()
-    return {"message": "Successfully subscribed to Daily AI Digest!"}
+    try:
+        existing = db.query(Subscriber).filter(Subscriber.email == request.email).first()
+        if existing:
+            if existing.is_active:
+                raise HTTPException(status_code=400, detail="Email already subscribed")
+            else:
+                existing.is_active = True
+                db.commit()
+                return {"message": "Welcome back! Subscription reactivated."}
+        subscriber = Subscriber(email=request.email)
+        db.add(subscriber)
+        db.commit()
+        return {"message": "Successfully subscribed to Daily AI Digest!"}
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database unavailable. Start PostgreSQL or update DATABASE_URL. Error: {e}",
+        )
 
 
 @router.delete("/unsubscribe")
 def unsubscribe(email: EmailStr, db: Session = Depends(get_db)):
-    subscriber = db.query(Subscriber).filter(Subscriber.email == email).first()
-    if not subscriber or not subscriber.is_active:
-        raise HTTPException(status_code=404, detail="Email not found")
-    subscriber.is_active = False
-    db.commit()
-    return {"message": "You have been unsubscribed from Daily AI Digest."}
+    try:
+        subscriber = db.query(Subscriber).filter(Subscriber.email == email).first()
+        if not subscriber or not subscriber.is_active:
+            raise HTTPException(status_code=404, detail="Email not found")
+        subscriber.is_active = False
+        db.commit()
+        return {"message": "You have been unsubscribed from Daily AI Digest."}
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database unavailable. Start PostgreSQL or update DATABASE_URL. Error: {e}",
+        )
 
 
 @router.post("/trigger-digest")
 def trigger_digest():
     from ..tasks.digest_tasks import run_daily_digest
 
-    task = run_daily_digest.delay()
-    return {"message": "Daily digest task triggered", "task_id": task.id}
+    try:
+        # Manual trigger does not need result backend subscriptions.
+        task = run_daily_digest.apply_async(ignore_result=True)
+        return {"message": "Daily digest task triggered", "task_id": task.id}
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Could not enqueue digest task. Ensure Redis/Celery services are running. "
+                f"Error: {e}"
+            ),
+        )
 
 
 # --- NEW: Chat and Digest endpoints ---
@@ -57,7 +81,7 @@ def trigger_digest():
 
 class ChatRequest(BaseModel):
     question: str
-    doc_type: str = None  # Optional: "news", "research", or None for both
+    doc_type: Optional[str] = None  # Optional: "news", "research", or None for both
     n_results: int = 5  # How many chunks to retrieve
 
 
