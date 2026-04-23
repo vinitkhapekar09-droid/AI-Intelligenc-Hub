@@ -6,6 +6,7 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState("");
   const [userName, setUserName] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const savedToken = localStorage.getItem("token") || "";
@@ -15,6 +16,7 @@ export function AuthProvider({ children }) {
     setToken(savedToken);
     setUserName(savedName);
     setIsLoggedIn(savedLoggedIn && Boolean(savedToken));
+    setIsLoading(false);
   }, []);
 
   const login = (nextToken, name) => {
@@ -34,7 +36,7 @@ export function AuthProvider({ children }) {
     localStorage.clear();
   };
 
-  const value = useMemo(() => ({ token, userName, isLoggedIn, login, logout }), [token, userName, isLoggedIn]);
+  const value = useMemo(() => ({ token, userName, isLoggedIn, isLoading, login, logout }), [token, userName, isLoggedIn, isLoading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

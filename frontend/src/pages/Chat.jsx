@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
 import api from "../api";
 
 function sourceText(source) {
@@ -8,17 +9,47 @@ function sourceText(source) {
 }
 
 function ChatPage() {
+  const { token } = useAuth();
   const [question, setQuestion] = useState("");
   const [docType, setDocType] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   const filters = useMemo(() => [
     { label: "All", value: null },
     { label: "Research", value: "research" },
     { label: "News", value: "news" }
   ], []);
+
+  // Load conversation history on mount
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        setHistoryLoading(true);
+        const { data } = await api.get("/chat/history?limit=50");
+        if (data?.messages && Array.isArray(data.messages)) {
+          setMessages(
+            data.messages.map((m) => ({
+              role: m.role,
+              text: m.text,
+              sources: m.sources || [],
+              ts: new Date(m.timestamp).toLocaleTimeString()
+            }))
+          );
+        }
+      } catch (e) {
+        console.error("Failed to load chat history:", e);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    if (token) {
+      loadHistory();
+    }
+  }, [token]);
 
   const sendMessage = async (event) => {
     event.preventDefault();
@@ -34,7 +65,8 @@ function ChatPage() {
       const { data } = await api.post("/chat", {
         question: q,
         doc_type: docType,
-        n_results: 5
+        n_results: 5,
+        history: messages.slice(-10) // Send last 10 messages as context
       });
 
       setMessages((prev) => [
@@ -53,10 +85,29 @@ function ChatPage() {
     }
   };
 
+  const clearHistory = async () => {
+    if (!window.confirm("Clear all chat history? This cannot be undone.")) return;
+    
+    try {
+      await api.delete("/chat/history");
+      setMessages([]);
+    } catch (e) {
+      setError("Failed to clear history");
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-64px)]">
       <aside className="hidden md:flex flex-col items-center py-4 space-y-4 w-20 border-r border-slate-200 bg-slate-50">
-        <button className="w-12 h-12 bg-primary text-on-primary rounded-xl flex items-center justify-center mb-6 shadow-sm">
+        <button 
+          onClick={() => {
+            setMessages([]);
+            setQuestion("");
+            setError("");
+          }}
+          className="w-12 h-12 bg-primary text-on-primary rounded-xl flex items-center justify-center mb-6 shadow-sm hover:opacity-90 transition-opacity" 
+          title="Start new chat"
+        >
           <span className="material-symbols-outlined">add</span>
         </button>
         <div className="flex flex-col items-center space-y-6 w-full">
@@ -65,6 +116,13 @@ function ChatPage() {
             <span className="font-['Inter'] text-[10px] uppercase tracking-wider">Messages</span>
           </div>
         </div>
+        <button 
+          onClick={clearHistory}
+          className="mt-auto mb-4 w-12 h-12 bg-red-50 text-red-600 rounded-xl flex items-center justify-center hover:bg-red-100 transition-colors"
+          title="Clear chat history"
+        >
+          <span className="material-symbols-outlined text-sm">delete_sweep</span>
+        </button>
       </aside>
 
       <main className="flex-1 flex flex-col bg-surface overflow-hidden">
@@ -72,6 +130,7 @@ function ChatPage() {
           <div className="flex items-center gap-xs">
             <span className="material-symbols-outlined text-primary">auto_awesome</span>
             <h2 className="font-h3 text-h3">Intelligent Assistant</h2>
+            <span className="ml-2 text-xs text-slate-500">({messages.length} messages saved)</span>
           </div>
           <div className="flex gap-2">
             {filters.map((f) => (
@@ -87,7 +146,11 @@ function ChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-gutter space-y-gutter max-w-4xl mx-auto w-full">
-          {messages.length === 0 ? <p className="font-body-md text-body-md text-on-surface-variant">Start by asking a question about AI news or research.</p> : null}
+          {historyLoading ? (
+            <p className="font-body-md text-body-md text-on-surface-variant">Loading chat history...</p>
+          ) : messages.length === 0 ? (
+            <p className="font-body-md text-body-md text-on-surface-variant">Start by asking a question about AI news or research. Your chats will be saved automatically.</p>
+          ) : null}
 
           {messages.map((m, idx) => (
             <div key={`${m.role}-${idx}`} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"} items-start gap-md`}>

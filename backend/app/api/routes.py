@@ -234,18 +234,20 @@ class ChatRequest(BaseModel):
 def chat(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
-    RAG-based chat endpoint.
+    RAG-based chat endpoint with persistent memory.
     User asks a question, gets an answer grounded in ingested AI/ML content.
+    Conversation is saved to database for future context.
 
     This endpoint requires valid JWT authentication.
     Include Authorization: Bearer <token> header.
 
-    WHY lazy import for chat_agent?
-    chat_agent loads the sentence-transformers model at import time (~2s).
-    Lazy importing means this only happens when /chat is first called,
-    not at app startup — keeping startup time fast.
+    Features:
+    - Persistent conversation memory (no more context loss on reload!)
+    - Multi-turn conversation support
+    - Answer grounded in retrieval-augmented generation
     """
     if not current_user.is_active:
         raise HTTPException(
@@ -254,17 +256,155 @@ def chat(
         )
 
     from ..agents.chat_agent import ask
+    from ..services.conversation_service import (
+        save_message,
+        get_conversation_history,
+    )
 
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+    # Load conversation history from database for context
+    saved_history = get_conversation_history(db, current_user.id, limit=10)
+    print(f"[chat] Loaded {len(saved_history)} messages from history for user {current_user.id}")
+    
+    # Format history for the chat agent
+    history_for_agent = saved_history if saved_history else None
+
+    # Get the answer from the chat agent
     result = ask(
         question=request.question,
         n_results=request.n_results,
         doc_type=request.doc_type,
-        history=[m.dict() for m in request.history] if request.history else None,
+        history=history_for_agent,
     )
+    print(f"[chat] Agent found {result['chunks_found']} chunks, used {len(result['sources'])} sources")
+
+    # Save user message to conversation history
+    try:
+        save_message(
+            db,
+            user_id=current_user.id,
+            role="user",
+            message=request.question,
+            doc_type=request.doc_type,
+        )
+
+        # Save assistant response to conversation history
+        save_message(
+            db,
+            user_id=current_user.id,
+            role="assistant",
+            message=result["answer"],
+            doc_type=request.doc_type,
+            sources=result["sources"],
+        )
+    except Exception as e:
+        print(f"[chat] Failed to save conversation history: {e}")
+        # Don't fail the response if history saving fails
+
     return result
+
+
+@router.get("/chat/history")
+def get_chat_history(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get the user's conversation history for memory/context.
+    
+    Args:
+        limit: Maximum number of messages to retrieve (default 20)
+    
+    Returns:
+        List of conversation messages with timestamps and sources
+    """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    from ..services.conversation_service import get_conversation_history
+
+    try:
+        history = get_conversation_history(db, current_user.id, limit=limit)
+        return {
+            "status": "ok",
+            "message_count": len(history),
+            "messages": history,
+        }
+    except Exception as e:
+        print(f"[chat/history] Failed to retrieve history: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve conversation history",
+        )
+
+
+@router.delete("/chat/history")
+def clear_chat_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Clear all conversation history for the current user.
+    This allows users to start fresh if desired.
+    """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    from ..services.conversation_service import clear_conversation_history
+
+    try:
+        deleted_count = clear_conversation_history(db, current_user.id)
+        return {
+            "status": "ok",
+            "message": f"Cleared {deleted_count} messages from conversation history",
+            "deleted_count": deleted_count,
+        }
+    except Exception as e:
+        print(f"[chat/history] Failed to clear history: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to clear conversation history",
+        )
+
+
+@router.get("/chat/stats")
+def get_chat_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get statistics about the user's conversations.
+    Shows message counts, preferences, and insights.
+    """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    from ..services.conversation_service import get_conversation_summary
+
+    try:
+        stats = get_conversation_summary(db, current_user.id)
+        return {
+            "status": "ok",
+            "stats": stats,
+        }
+    except Exception as e:
+        print(f"[chat/stats] Failed to retrieve stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve conversation stats",
+        )
 
 
 @router.get("/daily-digest")

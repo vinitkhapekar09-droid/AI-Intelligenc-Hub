@@ -73,7 +73,7 @@ def _build_prompt(question: str, context: str, history: list | None = None) -> s
     - Conversation history gives the model context for follow-up questions
     - Explicit context section prevents hallucination
     - "If the context doesn't contain..." prevents confident wrong answers
-    - Asking for concise answers keeps responses readable
+    - More conversational tone makes it feel human-like
     """
     history_text = ""
     if history:
@@ -82,63 +82,111 @@ def _build_prompt(question: str, context: str, history: list | None = None) -> s
         history_text = "\n".join(
             f"{item['role'].capitalize()}: {item['text']}" for item in history_items
         )
-        history_text = f"CONVERSATION HISTORY:\n{history_text}\n\n"
+        history_text = f"📚 CONVERSATION HISTORY:\n{history_text}\n\n"
 
-    return f"""You are an AI research assistant for an AI/ML intelligence hub.
-You help users understand the latest AI news and research papers.
-Be concise, accurate, and honest about the limits of your knowledge.
+    return f"""You are a friendly and knowledgeable AI research assistant specializing in AI and ML news and research. 
+Your personality: helpful, conversational, and honest about your limitations.
+You speak naturally like a human, not like a robot.
 
-Use ONLY the context below to answer the question.
-If the context doesn't contain enough information to answer,
-say "I don't have enough information about that in my current knowledge base."
-Do NOT make up information or use knowledge outside the provided context.
-Do NOT speculate about sources not mentioned in the context.
+IMPORTANT GUIDELINES:
+✓ Use the context below to answer questions - it's your knowledge base
+✓ If the context doesn't have the info, just say you don't have it - don't make things up
+✓ Keep answers conversational and human-like (2-4 sentences usually)
+✓ When mentioning sources, weave them naturally into your response
+✓ Use "I" sometimes (e.g., "I found that...", "I don't have data on...")
+✓ Show personality - ask follow-ups if the question seems incomplete
 
-{history_text}CONTEXT:
+{history_text}📖 CONTEXT TO USE:
 {context}
 
-QUESTION:
+🤔 THE QUESTION:
 {question}
 
-Provide a clear, concise answer (2-4 sentences).
-If relevant, mention which sources support your answer.
-Format your response in plain text without markdown.
+Remember: Be helpful, be honest, be conversational. If you're not sure about something, say so!
 """
 
 
 def _is_greeting(question: str) -> bool:
     """Check if the question is a greeting or off-topic."""
-    greetings = ["hello", "hi", "hey", "hii", "hiii", "greetings", "howdy", "what's up", "yo", "sup"]
+    greetings = ["hello", "hi", "hey", "hii", "hiii", "greetings", "howdy", "what's up", "yo", "sup", "hey there", "good morning", "good afternoon", "good evening"]
     normalized = question.lower().strip()
     return any(greeting in normalized for greeting in greetings)
 
 
 def _handle_greeting(question: str) -> dict:
-    """Handle greetings with a friendly response."""
-    responses = {
-        "hi": "Hey there! 👋 I'm here to help you learn about the latest AI news and research. What would you like to know?",
-        "hello": "Hello! Welcome to the AI Intelligence Hub. Ask me anything about AI/ML research and news.",
-        "hey": "Hey! Ready to explore some AI insights? What interests you?",
-        "what's up": "Not much, just here to help! What AI topics are you curious about?",
-    }
+    """Handle greetings with a friendly, conversational response."""
+    responses = [
+        "Hey! 👋 I'm here to help you explore the latest in AI and machine learning research. What's on your mind?",
+        "Hi there! 👋 Got any questions about AI news or research papers? I'm all ears!",
+        "Hey! Welcome to the AI hub. What would you like to know about AI/ML today?",
+        "Good to see you! Ready to dive into some AI research or news? Just ask away!",
+        "Hey! 👋 I'm your AI research assistant. What can I help you discover today?",
+    ]
     
-    normalized = question.lower().strip()
-    for greeting, response in responses.items():
-        if greeting in normalized:
-            return {
-                "answer": response,
-                "sources": [],
-                "chunks_found": 0,
-                "model": CHAT_MODEL,
-            }
-    
-    # Default friendly response
+    import random
     return {
-        "answer": "Hey! I'm an AI assistant specialized in AI news and research. Feel free to ask me about the latest developments in machine learning, AI research papers, or industry news!",
+        "answer": random.choice(responses),
         "sources": [],
         "chunks_found": 0,
         "model": CHAT_MODEL,
     }
+
+
+def _is_follow_up(question: str) -> bool:
+    """Check if this looks like a follow-up question."""
+    follow_up_patterns = [
+        "tell me more",
+        "what about",
+        "explain that",
+        "how so",
+        "why",
+        "can you",
+        "could you",
+        "what do you think",
+        "elaborate",
+        "details",
+        "example",
+        "specifically",
+        "basically",
+        "so like",
+        "what else",  # IMPORTANT: Must detect this!
+        "continue",
+        "go on",
+        "more",
+        "further",
+        "and",
+        "what's",
+        "how about",
+        "expand",
+    ]
+    normalized = question.lower()
+    return any(pattern in normalized for pattern in follow_up_patterns)
+
+
+def _improve_query_with_history(question: str, history: list) -> str:
+    """Enhance a vague question using conversation history."""
+    if not history or len(history) == 0:
+        return question
+    
+    # For very short follow-ups, find what we were talking about
+    if len(question) < 30:
+        # Look for the last non-greeting assistant response
+        for i in range(len(history) - 1, -1, -1):
+            if history[i].get("role") == "assistant":
+                last_response = history[i].get("text", "")
+                # Extract first sentence for context
+                first_sentence = last_response.split(".")[0]
+                if first_sentence and len(first_sentence) > 10:
+                    return f"{question} about {first_sentence[:60]}"
+        
+        # If just saying "what else", look for the previous user question
+        if question.lower() in ["what else", "tell me more", "go on", "continue"]:
+            for i in range(len(history) - 1, -1, -1):
+                if history[i].get("role") == "user":
+                    last_question = history[i].get("text", "")
+                    return f"{question} about {last_question[:60]}"
+    
+    return question
 
 
 def _validate_response(answer: str) -> bool:
@@ -152,16 +200,16 @@ def _validate_response(answer: str) -> bool:
 
 def ask(question: str, n_results: int = 5, doc_type: str = None, history: list | None = None) -> dict:
     """
-    Main entry point for the chat agent.
+    Main entry point for the chat agent with memory support.
 
     Args:
         question: User's natural language question
         n_results: How many chunks to retrieve from vector store
         doc_type: Optional filter — "news", "research", or None for both
-        history: Optional list of previous chat messages for short-term context
+        history: Optional list of previous chat messages for persistent memory
 
     Returns dict with:
-        - answer: LLM generated response
+        - answer: LLM generated response (conversational and human-like)
         - sources: list of source documents used
         - chunks_found: number of relevant chunks retrieved
         - model: which LLM was used (for transparency)
@@ -171,7 +219,7 @@ def ask(question: str, n_results: int = 5, doc_type: str = None, history: list |
     
     if not question or not question.strip():
         return {
-            "answer": "Please ask a question.",
+            "answer": "Hmm, looks like that was empty. Go ahead and ask me anything about AI news or research!",
             "sources": [],
             "chunks_found": 0,
             "model": CHAT_MODEL,
@@ -180,7 +228,7 @@ def ask(question: str, n_results: int = 5, doc_type: str = None, history: list |
     # Detect spam or abuse
     if _is_spam_or_abuse(question):
         return {
-            "answer": "I couldn't process that input. Please ask a clear question about AI news or research.",
+            "answer": "I couldn't understand that input. Could you rephrase your question about AI/ML research or news?",
             "sources": [],
             "chunks_found": 0,
             "model": CHAT_MODEL,
@@ -190,38 +238,70 @@ def ask(question: str, n_results: int = 5, doc_type: str = None, history: list |
     if _is_greeting(question):
         return _handle_greeting(question)
 
-    # Step 1: Retrieve relevant context from vector store
-    retrieval = retrieve(question, n_results=n_results, doc_type=doc_type)
+    # Step 2: Try to improve the query if it looks like a follow-up
+    enhanced_question = question
+    is_followup = _is_follow_up(question)
+    
+    if is_followup and history:
+        print(f"[chat_agent] Follow-up detected, using history ({len(history)} messages)")
+        enhanced_question = _improve_query_with_history(question, history)
+        print(f"[chat_agent] Enhanced question: '{question}' → '{enhanced_question}'")
 
-    # Step 2: If vague query returns nothing, improve it using conversation history
-    if retrieval["chunks_found"] == 0 and history and len(history) > 0:
-        # Try to improve the query by extracting context from previous turns
-        # Look at the last assistant response for keywords to add context
-        last_assistant = None
-        for msg in reversed(history):
-            if msg.get("role") == "assistant":
-                last_assistant = msg.get("text", "")
-                break
-        
-        # If we found previous context, try a richer query combining them
-        if last_assistant:
-            enriched_question = f"{question} about {last_assistant[:100]}"
-            retrieval = retrieve(enriched_question, n_results=n_results, doc_type=doc_type)
+    # Step 3: Retrieve relevant context from vector store
+    retrieval = retrieve(enhanced_question, n_results=n_results, doc_type=doc_type)
 
-    # Step 3: If still nothing found, return helpful message
+    # Step 4: If nothing found with enhanced question, try with original
+    if retrieval["chunks_found"] == 0 and enhanced_question != question:
+        retrieval = retrieve(question, n_results=n_results, doc_type=doc_type)
+    
+    # Step 5: If STILL nothing, try to find ANY related content from history
+    if retrieval["chunks_found"] == 0 and history and is_followup:
+        # Try searching with previous questions for context
+        for i in range(len(history) - 1, max(len(history) - 5, -1), -1):
+            if history[i].get("role") == "user":
+                prev_q = history[i].get("text", "").strip()
+                if prev_q and prev_q != question:
+                    retrieval = retrieve(prev_q, n_results=n_results, doc_type=doc_type)
+                    if retrieval["chunks_found"] > 0:
+                        break
+
+    # Step 6: If still nothing found, provide a helpful response
     if retrieval["chunks_found"] == 0:
+        # If this is a follow-up and we have history, acknowledge what we discussed
+        if is_followup and history:
+            # Find what we were discussing
+            last_user_q = None
+            for i in range(len(history) - 1, -1, -1):
+                if history[i].get("role") == "user":
+                    last_user_q = history[i].get("text", "").strip()
+                    break
+            
+            if last_user_q and last_user_q != question:
+                return {
+                    "answer": f"I've shared what I know about '{last_user_q}' from the knowledge base. Unfortunately, I don't have more information on that specific topic. Would you like to ask about something else in AI/ML?",
+                    "sources": [],
+                    "chunks_found": 0,
+                    "model": CHAT_MODEL,
+                }
+        
+        # Default response for when we have no information
+        suggestions = [
+            "I don't have data on that just yet. The knowledge base mostly has content from recent digests. Try asking about recent AI news or research papers?",
+            "Hmm, I couldn't find anything about that in my current knowledge. Have you tried asking about a specific AI research topic or recent news?",
+            "That's an interesting question, but I don't have information about it in the knowledge base. What about asking me something related to AI/ML research?",
+        ]
+        import random
         return {
-            "answer": "I don't have enough information about that in my current knowledge base. "
-            "Try asking about recent AI news or research papers after the daily digest runs.",
+            "answer": random.choice(suggestions),
             "sources": [],
             "chunks_found": 0,
             "model": CHAT_MODEL,
         }
 
-    # Step 4: Build the RAG prompt
+    # Step 7: Build the RAG prompt with conversation history
     prompt = _build_prompt(question, retrieval["context"], history=history)
 
-    # Step 5: Call Groq LLaMA with retry logic
+    # Step 8: Call Groq LLaMA with retry logic and better error handling
     answer = None
     last_error = None
     
@@ -235,8 +315,8 @@ def ask(question: str, n_results: int = 5, doc_type: str = None, history: list |
                         "content": prompt,
                     }
                 ],
-                temperature=0.3,  # WHY low temperature? We want factual answers,
-                max_tokens=512,  # not creative ones. Lower = more focused.
+                temperature=0.5,  # Slightly higher for more conversational tone
+                max_tokens=512,
             )
 
             answer = response.choices[0].message.content.strip()
@@ -247,22 +327,21 @@ def ask(question: str, n_results: int = 5, doc_type: str = None, history: list |
                     time.sleep(RETRY_DELAY)
                     continue
                 else:
-                    answer = "I generated a response but it didn't meet quality standards. Please try rephrasing your question."
+                    answer = "I had trouble generating a clear response. Could you try rewording your question?"
             
-            print(f"[chat_agent] Answered question using {retrieval['chunks_found']} chunks (attempt {attempt + 1})")
+            print(f"[chat_agent] Answered using {retrieval['chunks_found']} chunks (attempt {attempt + 1})")
             break
             
         except Exception as e:
             last_error = e
+            print(f"[chat_agent] Attempt {attempt + 1} failed: {e}")
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_DELAY)
                 continue
-            else:
-                print(f"[chat_agent] Failed after {MAX_RETRIES} attempts: {e}")
 
     if answer is None:
         return {
-            "answer": "Sorry, I encountered an error generating a response. Please try again in a moment.",
+            "answer": "Oops, I'm having trouble connecting right now. Give me a second and try again!",
             "sources": [],
             "chunks_found": retrieval["chunks_found"],
             "model": CHAT_MODEL,

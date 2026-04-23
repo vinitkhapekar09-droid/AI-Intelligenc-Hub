@@ -11,4 +11,5 @@ mlflow.db
 *.sqlite3
 .vscode/
 .idea/
-.DS_Store
+.DS_Storefrontend/dist/
+frontend/node_modules/

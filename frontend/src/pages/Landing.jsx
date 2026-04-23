@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import NewsCard from "../components/NewsCard";
 
@@ -19,6 +20,7 @@ function normalizeItems(payload) {
 
 function LandingPage() {
   const navigate = useNavigate();
+  const { isLoggedIn } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -26,6 +28,14 @@ function LandingPage() {
   const [subscribeLoading, setSubscribeLoading] = useState(false);
   const [subscribeMessage, setSubscribeMessage] = useState("");
   const [subscribeError, setSubscribeError] = useState("");
+
+  useEffect(() => {
+    // If already logged in, redirect to chat instead of showing landing
+    if (isLoggedIn) {
+      navigate("/chat", { replace: true });
+      return;
+    }
+  }, [isLoggedIn, navigate]);
 
   useEffect(() => {
     const fetchDigest = async () => {
