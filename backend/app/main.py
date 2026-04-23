@@ -5,6 +5,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.exc import SQLAlchemyError
 from .api.routes import router
 from .core.database import Base, engine
+from .models.user import User
+from .models.subscriber import Subscriber
 
 
 @asynccontextmanager
@@ -21,7 +23,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Daily AI Digest", version="1.0.0", lifespan=lifespan)
 
 # WHY CORS middleware?
-# Streamlit runs on a different port than FastAPI.
+# Frontend runs on a different port/domain than FastAPI.
 # Without this, browsers block requests between them.
 # In production, replace "*" with your actual domain.
 app.add_middleware(

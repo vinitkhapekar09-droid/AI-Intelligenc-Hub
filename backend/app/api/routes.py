@@ -6,6 +6,14 @@ from typing import Optional
 from ..core.database import get_db
 from ..models.subscriber import Subscriber
 from ..rag.vector_store import get_collection_stats
+from ..models.user import User
+from ..core.auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user,
+)
+from fastapi import status
 
 
 router = APIRouter()
@@ -15,15 +23,146 @@ class SubscribeRequest(BaseModel):
     email: EmailStr
 
 
+class RegisterRequest(BaseModel):
+    """Request body for user registration."""
+
+    name: str
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    """Request body for user login."""
+
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """JWT token response."""
+
+    access_token: str
+    token_type: str
+    user_name: str
+
+
 @router.get("/health")
 def health_check():
     return {"status": "healthy"}
 
 
+@router.post("/register", response_model=TokenResponse)
+def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    """
+    Register a new user account.
+
+    Args:
+        request: RegisterRequest with name, email, password
+        db: Database session
+
+    Returns:
+        TokenResponse with JWT token, token type, and user name
+
+    Raises:
+        HTTPException 400: If email already exists
+        HTTPException 503: If database is unavailable
+    """
+    try:
+        # Check if email already exists
+        existing_user = db.query(User).filter(User.email == request.email).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered",
+            )
+
+        # Create new user with hashed password
+        hashed_pwd = hash_password(request.password)
+        new_user = User(
+            name=request.name,
+            email=request.email,
+            hashed_password=hashed_pwd,
+            is_active=True,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+
+        # Generate JWT token
+        access_token = create_access_token(data={"sub": new_user.email})
+
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user_name=new_user.name,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database unavailable. Error: {e}",
+        )
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Login an existing user and return JWT token.
+
+    Args:
+        request: LoginRequest with email and password
+        db: Database session
+
+    Returns:
+        TokenResponse with JWT token, token type, and user name
+
+    Raises:
+        HTTPException 401: If email not found or password incorrect
+        HTTPException 503: If database is unavailable
+    """
+    try:
+        user = db.query(User).filter(User.email == request.email).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
+
+        if not verify_password(request.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password"
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account is inactive",
+            )
+
+        # Generate JWT token
+        access_token = create_access_token(data={"sub": user.email})
+
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user_name=user.name,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database unavailable. Error: {e}",
+        )
+
+
 @router.post("/subscribe")
 def subscribe(request: SubscribeRequest, db: Session = Depends(get_db)):
     try:
-        existing = db.query(Subscriber).filter(Subscriber.email == request.email).first()
+        existing = (
+            db.query(Subscriber).filter(Subscriber.email == request.email).first()
+        )
         if existing:
             if existing.is_active:
                 raise HTTPException(status_code=400, detail="Email already subscribed")
@@ -86,16 +225,28 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/chat")
-def chat(request: ChatRequest):
+def chat(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
     RAG-based chat endpoint.
     User asks a question, gets an answer grounded in ingested AI/ML content.
+
+    This endpoint requires valid JWT authentication.
+    Include Authorization: Bearer <token> header.
 
     WHY lazy import for chat_agent?
     chat_agent loads the sentence-transformers model at import time (~2s).
     Lazy importing means this only happens when /chat is first called,
     not at app startup — keeping startup time fast.
     """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
     from ..agents.chat_agent import ask
 
     if not request.question.strip():

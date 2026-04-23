@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     NEWS_API_KEY: str = ""
     MLFLOW_TRACKING_URL: str = "http://localhost:5000"
     SECRET_KEY: str = "CHANGE_ME"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_HOURS: int = 24
     ENVIRONMENT: str = "development"
 
     # --- New settings for RAG + Agents ---

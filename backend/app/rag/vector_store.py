@@ -10,6 +10,7 @@
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
+import os
 from .embedder import embed_text
 from ..core.config import settings
 
@@ -20,14 +21,27 @@ from ..core.config import settings
 CHROMA_PATH = settings.CHROMA_PATH
 COLLECTION_NAME = "ai_hub_documents"
 
-# Module-level client — created once, reused across all calls.
-# WHY: Creating a new client on every function call would be slow
-# and could cause file lock conflicts with ChromaDB's SQLite backend.
-_client = chromadb.PersistentClient(
-    path=CHROMA_PATH,
-    # Don't send usage data
-    settings=ChromaSettings(anonymized_telemetry=False),
-)
+# Module-level client cache.
+# IMPORTANT: Celery uses prefork workers; objects created before fork
+# may hang or behave unpredictably in child processes.
+# We recreate the client when PID changes to keep it fork-safe.
+_client = None
+_client_pid = None
+
+
+def _get_client():
+    global _client, _client_pid
+
+    current_pid = os.getpid()
+    if _client is None or _client_pid != current_pid:
+        _client = chromadb.PersistentClient(
+            path=CHROMA_PATH,
+            # Don't send usage data
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+        _client_pid = current_pid
+
+    return _client
 
 
 def get_collection():
@@ -36,7 +50,7 @@ def get_collection():
     get_or_create means: if collection exists, return it; if not, create it.
     WHY: Safe to call on every app startup without wiping existing data.
     """
-    return _client.get_or_create_collection(
+    return _get_client().get_or_create_collection(
         name=COLLECTION_NAME,
         # cosine similarity for text embeddings
         metadata={"hnsw:space": "cosine"},

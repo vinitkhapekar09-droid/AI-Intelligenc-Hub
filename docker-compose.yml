@@ -108,20 +108,19 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - MLFLOW_TRACKING_URL=http://mlflow:5000
 
-  # ── Streamlit Frontend ────────────────────────────────────
-  streamlit:
+  # ── React Frontend ────────────────────────────────────────
+  frontend:
     build:
       context: .
-      dockerfile: infra/docker/Dockerfile.streamlit
-    command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+      dockerfile: infra/docker/Dockerfile.frontend
+      args:
+        VITE_API_BASE: http://api:8000
     ports:
-      - "8501:8501"
+      - "3000:80"
     environment:
-      - API_BASE=http://api:8000
+      - VITE_API_BASE=http://api:8000
     depends_on:
       - api
-    volumes:
-      - ./frontend:/app
 
 volumes:
   postgres_data:
