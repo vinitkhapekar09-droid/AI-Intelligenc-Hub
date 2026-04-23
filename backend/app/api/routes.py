@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import List, Literal, Optional
 from ..core.database import get_db
 from ..models.subscriber import Subscriber
 from ..rag.vector_store import get_collection_stats
@@ -218,10 +218,16 @@ def trigger_digest():
 # --- NEW: Chat and Digest endpoints ---
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str
+
+
 class ChatRequest(BaseModel):
     question: str
     doc_type: Optional[str] = None  # Optional: "news", "research", or None for both
     n_results: int = 5  # How many chunks to retrieve
+    history: List[ChatMessage] = []
 
 
 @router.post("/chat")
@@ -256,6 +262,7 @@ def chat(
         question=request.question,
         n_results=request.n_results,
         doc_type=request.doc_type,
+        history=[m.dict() for m in request.history] if request.history else None,
     )
     return result
 
@@ -263,13 +270,34 @@ def chat(
 @router.get("/daily-digest")
 def get_daily_digest():
     """
-    Returns the latest summarized digest items and vector store stats.
-    WHY this endpoint? Useful for a frontend dashboard or status check
-    without triggering a full pipeline run.
+    Returns latest fetched items for the frontend to display.
+    Fetches fresh items from NewsAPI + arXiv and returns them normalized.
     """
+    from ..services.fetcher import fetch_all_items
+    from ..pipeline.normalizer import normalize_all
+    from ..rag.vector_store import get_collection_stats
+
+    try:
+        raw_items = fetch_all_items()
+        documents = normalize_all(raw_items)
+        items = [
+            {
+                "title": doc.title,
+                "summary": doc.content,
+                "source": doc.source,
+                "doc_type": doc.doc_type,
+                "url": doc.url,
+                "timestamp": doc.timestamp,
+            }
+            for doc in documents
+        ]
+    except Exception as e:
+        print(f"[daily-digest] Failed to fetch items: {e}")
+        items = []
+
     stats = get_collection_stats()
     return {
         "status": "ok",
+        "items": items,
         "vector_store": stats,
-        "message": "Use POST /trigger-digest to run the full pipeline",
     }
