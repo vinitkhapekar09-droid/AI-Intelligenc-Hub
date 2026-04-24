@@ -13,7 +13,7 @@ mlflow.db
 dump.rdb
 .vscode/
 .idea/
-.codex/
+.codex
 .DS_Store
 .pytest_cache/
 .mypy_cache/
