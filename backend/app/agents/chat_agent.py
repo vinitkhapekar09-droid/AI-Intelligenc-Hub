@@ -507,7 +507,6 @@ async def ask(
 
     # Step 8: Call Groq LLaMA with retry logic and better error handling
     answer = None
-    last_error = None
 
     for attempt in range(MAX_RETRIES):
         try:
@@ -543,7 +542,6 @@ async def ask(
             break
 
         except Exception as e:
-            last_error = e
             print(f"[chat_agent] Attempt {attempt + 1} failed: {e}")
             if attempt < MAX_RETRIES - 1:
                 await asyncio.sleep(RETRY_DELAY)

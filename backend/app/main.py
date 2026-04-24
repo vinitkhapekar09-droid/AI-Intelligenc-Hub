@@ -6,13 +6,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from .api.routes import router
 from .core.config import settings
 from .core.database import Base, engine
-from .models.content_item import ContentItem
-from .models.user import User
-from .models.subscriber import Subscriber
-from .models.conversation import Conversation
-from .models.daily_issue import DailyIssue
-from .models.rag_chunk import RagChunk
-from .models.task_run import TaskRun
 
 
 @asynccontextmanager

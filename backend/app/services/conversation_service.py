@@ -17,7 +17,7 @@ def save_message(
 ) -> Conversation:
     """
     Save a message to the conversation history.
-    
+
     Args:
         db: Database session
         user_id: User ID
@@ -25,12 +25,12 @@ def save_message(
         message: The message content
         doc_type: Optional document type filter used
         sources: Optional list of sources used in response
-    
+
     Returns:
         Saved Conversation object
     """
     sources_json = json.dumps(sources) if sources else None
-    
+
     conversation = Conversation(
         user_id=user_id,
         role=role,
@@ -39,11 +39,11 @@ def save_message(
         sources_used=sources_json,
         thread_id=thread_id,
     )
-    
+
     db.add(conversation)
     db.commit()
     db.refresh(conversation)
-    
+
     return conversation
 
 
@@ -55,12 +55,12 @@ def get_conversation_history(
 ) -> list[dict]:
     """
     Get the most recent conversation history for a user.
-    
+
     Args:
         db: Database session
         user_id: User ID
         limit: Maximum number of messages to return
-    
+
     Returns:
         List of conversation messages in chronological order
     """
@@ -72,10 +72,10 @@ def get_conversation_history(
     messages = query.order_by(
         Conversation.created_at.desc()
     ).limit(limit).all()
-    
+
     # Reverse to get chronological order (oldest first)
     messages.reverse()
-    
+
     return [
         {
             "id": msg.id,
@@ -97,11 +97,11 @@ def clear_conversation_history(
 ) -> int:
     """
     Clear all conversation history for a user.
-    
+
     Args:
         db: Database session
         user_id: User ID
-    
+
     Returns:
         Number of messages deleted
     """
@@ -110,7 +110,7 @@ def clear_conversation_history(
         query = query.filter(Conversation.thread_id == thread_id)
 
     count = query.delete()
-    
+
     db.commit()
     return count
 
@@ -175,25 +175,25 @@ def get_conversation_summary(
     total_messages = db.query(Conversation).filter(
         Conversation.user_id == user_id
     ).count()
-    
+
     user_messages = db.query(Conversation).filter(
         Conversation.user_id == user_id,
         Conversation.role == "user",
     ).count()
-    
+
     assistant_messages = total_messages - user_messages
-    
+
     # Get most common doc types
     doc_types = db.query(Conversation.doc_type).filter(
         Conversation.user_id == user_id,
         Conversation.role == "user",
     ).all()
-    
+
     doc_type_counts = {}
     for (dt,) in doc_types:
         if dt:
             doc_type_counts[dt] = doc_type_counts.get(dt, 0) + 1
-    
+
     return {
         "total_messages": total_messages,
         "user_messages": user_messages,

@@ -87,10 +87,10 @@ def health_check():
 def health_details(db: Session = Depends(get_db)):
     database = {"status": "unknown"}
     try:
-      db.execute(text("SELECT 1"))
-      database = {"status": "ok"}
+        db.execute(text("SELECT 1"))
+        database = {"status": "ok"}
     except Exception as exc:
-      database = {"status": "error", "detail": str(exc)}
+        database = {"status": "error", "detail": str(exc)}
 
     latest_issue = (
         db.query(DailyIssue)
@@ -367,7 +367,7 @@ def chat(
         thread_id=effective_thread_id,
     )
     print(f"[chat] Loaded {len(saved_history)} messages from history for user {current_user.id}")
-    
+
     # Format history for the chat agent
     history_for_agent = saved_history if saved_history else None
 
@@ -453,10 +453,10 @@ def get_chat_history(
 ):
     """
     Get the user's conversation history for memory/context.
-    
+
     Args:
         limit: Maximum number of messages to retrieve (default 20)
-    
+
     Returns:
         List of conversation messages with timestamps and sources
     """
