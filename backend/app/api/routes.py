@@ -92,11 +92,7 @@ def health_details(db: Session = Depends(get_db)):
     except Exception as exc:
         database = {"status": "error", "detail": str(exc)}
 
-    latest_issue = (
-        db.query(DailyIssue)
-        .order_by(DailyIssue.issue_date.desc())
-        .first()
-    )
+    latest_issue = db.query(DailyIssue).order_by(DailyIssue.issue_date.desc()).first()
     issue_count = db.query(DailyIssue).count()
     content_count = db.query(ContentItem).count()
     task_run = get_latest_task_run(db, "daily_digest")
@@ -110,15 +106,21 @@ def health_details(db: Session = Depends(get_db)):
         "feed": {
             "issue_count": issue_count,
             "content_item_count": content_count,
-            "latest_issue_date": latest_issue.issue_date.isoformat() if latest_issue else None,
+            "latest_issue_date": latest_issue.issue_date.isoformat()
+            if latest_issue
+            else None,
         },
         "rag": vector_stats,
         "scheduler": {
             "last_daily_digest_run": (
                 {
                     "status": task_run.status,
-                    "started_at": task_run.started_at.isoformat() if task_run.started_at else None,
-                    "finished_at": task_run.finished_at.isoformat() if task_run.finished_at else None,
+                    "started_at": task_run.started_at.isoformat()
+                    if task_run.started_at
+                    else None,
+                    "finished_at": task_run.finished_at.isoformat()
+                    if task_run.finished_at
+                    else None,
                     "issue_date": task_run.issue_date,
                     "detail": task_run.detail,
                 }
@@ -267,7 +269,9 @@ def unsubscribe(email: EmailStr, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Email not found")
         subscriber.is_active = False
         db.commit()
-        return {"message": "You have been unsubscribed from AI Intelligence Hub updates."}
+        return {
+            "message": "You have been unsubscribed from AI Intelligence Hub updates."
+        }
     except SQLAlchemyError as e:
         raise HTTPException(
             status_code=503,
@@ -366,7 +370,9 @@ def chat(
         limit=100,
         thread_id=effective_thread_id,
     )
-    print(f"[chat] Loaded {len(saved_history)} messages from history for user {current_user.id}")
+    print(
+        f"[chat] Loaded {len(saved_history)} messages from history for user {current_user.id}"
+    )
 
     # Format history for the chat agent
     history_for_agent = saved_history if saved_history else None
@@ -379,7 +385,9 @@ def chat(
         history=history_for_agent,
         issue_date=request.issue_date,
     )
-    print(f"[chat] Agent found {result['chunks_found']} chunks, used {len(result['sources'])} sources")
+    print(
+        f"[chat] Agent found {result['chunks_found']} chunks, used {len(result['sources'])} sources"
+    )
 
     # Save user message to conversation history
     try:

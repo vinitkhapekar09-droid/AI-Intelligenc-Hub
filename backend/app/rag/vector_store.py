@@ -59,9 +59,7 @@ def store_chunks(embedded_chunks: list[dict]) -> int:
                 continue
 
             existing = (
-                db.query(RagChunk)
-                .filter(RagChunk.chunk_id == item["id"])
-                .first()
+                db.query(RagChunk).filter(RagChunk.chunk_id == item["id"]).first()
             )
 
             if existing is None:
