@@ -100,7 +100,7 @@ def health_details(db: Session = Depends(get_db)):
     issue_count = db.query(DailyIssue).count()
     content_count = db.query(ContentItem).count()
     task_run = get_latest_task_run(db, "daily_digest")
-    vector_stats = get_collection_stats()
+    vector_stats = get_collection_stats(db)
 
     overall_status = "ok" if database["status"] == "ok" else "degraded"
 
@@ -602,7 +602,7 @@ def get_daily_digest(
         else get_latest_issue(db)
     )
 
-    stats = get_collection_stats()
+    stats = get_collection_stats(db)
     if issue is None:
         return {
             "status": "ok",

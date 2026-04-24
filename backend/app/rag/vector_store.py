@@ -122,12 +122,17 @@ def search(
         db.close()
 
 
-def get_collection_stats() -> dict:
-    db = SessionLocal()
+def get_collection_stats(db: Session | None = None) -> dict:
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+
     try:
         total_chunks = db.query(RagChunk).count()
     finally:
-        db.close()
+        if should_close:
+            db.close()
 
     return {
         "total_chunks": total_chunks,
