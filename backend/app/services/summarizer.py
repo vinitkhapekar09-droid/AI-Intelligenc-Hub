@@ -13,6 +13,9 @@ client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 def _init_mlflow() -> bool:
     """Initialize MLflow once; disable tracking if the server is unavailable."""
+    if not settings.MLFLOW_TRACKING_URL.strip():
+        return False
+
     parsed = urlparse(settings.MLFLOW_TRACKING_URL)
     host = parsed.hostname
     port = parsed.port or (443 if parsed.scheme == "https" else 80)

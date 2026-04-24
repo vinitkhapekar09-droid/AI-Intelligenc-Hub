@@ -25,7 +25,8 @@ Prometheus + Grafana
 | Scheduling | Celery Beat (daily 7AM IST) |
 | LLM | Google Gemini 2.0 Flash |
 | Email | Resend |
-| LLMOps | MLflow (prompt tracking, latency, token logs) |
+| Retrieval | SQL-backed RAG chunks + Gemini embeddings |
+| LLMOps | MLflow (optional prompt tracking, latency, token logs) |
 | Containerization | Docker + Docker Compose |
 | CI/CD | GitHub Actions |
 | Monitoring | Prometheus + Grafana |
@@ -49,20 +50,111 @@ Prometheus + Grafana
 ---
 
 ## 🏗️ Project Structure
-daily-ai-digest/
-├── backend/
-│   └── app/
-│       ├── api/           # FastAPI routes
-│       ├── core/          # Config, DB, Celery setup
-│       ├── models/        # SQLAlchemy models
-│       ├── services/      # Fetcher, Summarizer, Email sender
-│       └── tasks/         # Celery task definitions
-├── infra/
-│   ├── docker/            # Dockerfile
-│   └── prometheus.yml     # Prometheus scrape config
-├── tests/                 # pytest test suite
+
+```text
+ai_explore/
+├── backend/               # FastAPI app, RAG pipeline, Celery tasks
+├── frontend/              # Vite + React client
+├── infra/                 # Docker and Prometheus config
+├── tests/                 # Shared pytest suite
+├── docs/                  # Product, auth, design, and project notes
 ├── .github/workflows/     # CI/CD pipelines
-└── docker-compose.yml     # Full stack orchestration
+├── docker-compose.yml     # Full stack orchestration
+└── README.md
+```
+
+## 📚 Project Docs
+
+- `docs/AI_PROJECT_CONTEXT.md` - current product and project context
+- `docs/DESIGN.md` - design notes and UI direction
+- `docs/AUTH_SYSTEM_GUIDE.md` - auth architecture and flows
+- `docs/QUICK_START_AUTH.md` - auth setup quick start
+- `docs/FIXES_COMPLETE.md` - implementation fix log
+- `docs/FRONTEND_FIXES_SUMMARY.md` - frontend-focused changes summary
+- `docs/DEPLOY_DIGITALOCEAN.md` - low-cost single-droplet deployment guide
+- `docs/project.txt` - original project outline
+
+## 🗃️ Database Migrations
+
+The backend now uses Alembic for schema changes.
+
+```bash
+cd backend
+alembic upgrade head
+```
+
+Create a new migration after model changes:
+
+```bash
+cd backend
+alembic revision --autogenerate -m "describe change"
+```
+
+## 🌱 Populate Demo Data
+
+Seed a few realistic daily issues without external API keys:
+
+```bash
+cd /workspaces/ai_explore
+./.venv/bin/python scripts/populate_project.py --mode demo --days 3
+```
+
+Use live APIs instead:
+
+```bash
+cd /workspaces/ai_explore
+./.venv/bin/python scripts/populate_project.py --mode live --max-items 8
+```
+
+## ▶️ Local Demo Run
+
+Recommended non-Docker local flow:
+
+```bash
+cd /workspaces/ai_explore
+./.venv/bin/python scripts/populate_project.py --mode demo --days 3
+bash scripts/run_local_backend.sh
+```
+
+In a second terminal:
+
+```bash
+cd /workspaces/ai_explore
+bash scripts/run_local_frontend.sh
+```
+
+This keeps the backend on a known SQLite file and makes the Vite frontend proxy `/api` to the backend automatically.
+
+## ✅ Smoke Test
+
+Verify the backend quickly:
+
+```bash
+cd /workspaces/ai_explore
+./.venv/bin/python scripts/smoke_test.py --base-url http://localhost:8000
+```
+
+Require real feed/RAG data too:
+
+```bash
+cd /workspaces/ai_explore
+./.venv/bin/python scripts/smoke_test.py --base-url http://localhost:8000 --expect-data
+```
+
+## 🐳 Codespaces Docker Run
+
+Use the lighter Codespaces overlay instead of the full stack:
+
+```bash
+cd /workspaces/ai_explore
+docker compose -f docker-compose.yml -f docker-compose.codespaces.yml up --build db redis api frontend
+```
+
+Only enable heavier background services when you need them:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.codespaces.yml --profile full up --build
+```
 
 ---
 

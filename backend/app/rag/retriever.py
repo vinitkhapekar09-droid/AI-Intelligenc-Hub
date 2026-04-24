@@ -1,11 +1,12 @@
 # rag/retriever.py
 #
 # WHY THIS FILE EXISTS:
-# vector_store.py handles raw Chroma operations.
+# vector_store.py handles raw storage operations.
 # This file sits above it and formats results specifically
 # for use by the chat agent — filtering low-quality matches,
 # formatting context strings, and returning source attribution.
 
+from .embedder import embed_text
 from .vector_store import search
 
 
@@ -20,6 +21,7 @@ def retrieve(
     query: str,
     n_results: int = 5,
     doc_type: str = None,
+    issue_date: str | None = None,
 ) -> dict:
     """
     Retrieves the most relevant chunks for a given query.
@@ -34,7 +36,13 @@ def retrieve(
     (for attribution in the response) — bundling them together
     makes the chat agent code cleaner.
     """
-    raw_results = search(query, n_results=n_results, doc_type=doc_type)
+    query_embedding = embed_text(query)
+    raw_results = search(
+        query_embedding,
+        n_results=n_results,
+        doc_type=doc_type,
+        issue_date=issue_date,
+    )
 
     # Filter out low-relevance results
     relevant = [r for r in raw_results if r["score"] >= MINIMUM_RELEVANCE_SCORE]
@@ -52,7 +60,7 @@ def retrieve(
     for i, chunk in enumerate(relevant, 1):
         meta = chunk["metadata"]
         context_parts.append(
-            f"[{i}] Source: {meta['source']} | Type: {meta['doc_type']}\n"
+            f"[{i}] Source: {meta['source']} | Type: {meta['doc_type']} | Issue Date: {meta.get('issue_date', 'unknown')}\n"
             f"Title: {meta['title']}\n"
             f"{chunk['text']}\n"
         )
@@ -71,6 +79,7 @@ def retrieve(
                     "source": meta["source"],
                     "url": url,
                     "doc_type": meta["doc_type"],
+                    "issue_date": meta.get("issue_date"),
                 }
             )
             seen_urls.add(url)

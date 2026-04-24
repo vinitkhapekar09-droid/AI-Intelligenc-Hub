@@ -6,6 +6,7 @@
 # We use overlapping chunks so that sentences at chunk boundaries
 # are represented in multiple chunks — preventing information loss.
 
+import re
 from dataclasses import dataclass
 from ..pipeline.normalizer import UnifiedDocument
 
@@ -24,45 +25,87 @@ class TextChunk:
     source: str  # e.g. "arXiv", "TechCrunch"
     title: str  # Parent document title — useful for citations
     url: str  # Original URL — for attribution in chat responses
+    timestamp: str  # Original publication timestamp
 
 
 def chunk_document(
     doc: UnifiedDocument,
-    chunk_size: int = 300,  # Max words per chunk
-    overlap: int = 50,  # Words shared between adjacent chunks
+    chunk_size: int = 1500,  # Max characters per chunk (~300 words)
+    overlap: int = 250,  # Overlapping characters
 ) -> list[TextChunk]:
     """
-    Splits a UnifiedDocument into overlapping TextChunks.
+    Splits a UnifiedDocument into overlapping TextChunks using sentence boundaries.
 
-    WHY words instead of characters?
-    Word-based splitting is more natural — it doesn't cut mid-word,
-    and embedding models think in tokens (which are close to words).
+    WHY sentences instead of words?
+    Splitting blindly by words frequently cuts right through the middle of sentences,
+    destroying context. Splitting by sentences preserves complete thoughts.
     """
-    words = doc.content.split()
+    text = doc.content.strip()
 
     # If the document is short enough, don't split it at all
-    if len(words) <= chunk_size:
+    if len(text) <= chunk_size:
         return [
             TextChunk(
                 chunk_id=f"{doc.doc_id}_chunk_0",
                 doc_id=doc.doc_id,
-                text=doc.content,
+                text=text,
                 doc_type=doc.doc_type,
                 source=doc.source,
                 title=doc.title,
                 url=doc.url,
+                timestamp=doc.timestamp,
             )
         ]
 
     chunks = []
-    start = 0
+    current_chunk = []
+    current_length = 0
     index = 0
 
-    while start < len(words):
-        end = start + chunk_size
-        chunk_words = words[start:end]
-        chunk_text = " ".join(chunk_words)
+    # Split into sentences (naively by punctuation)
+    sentences = re.split(r"(?<=[.!?])\s+", text)
 
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        sentence_len = len(sentence)
+
+        if current_length + sentence_len > chunk_size and current_length > 0:
+            chunk_text = " ".join(current_chunk)
+            chunks.append(
+                TextChunk(
+                    chunk_id=f"{doc.doc_id}_chunk_{index}",
+                    doc_id=doc.doc_id,
+                    text=chunk_text,
+                    doc_type=doc.doc_type,
+                    source=doc.source,
+                    title=doc.title,
+                    url=doc.url,
+                    timestamp=doc.timestamp,
+                )
+            )
+            index += 1
+
+            # Calculate overlap for next chunk
+            overlap_text = []
+            overlap_length = 0
+            for s in reversed(current_chunk):
+                if overlap_length + len(s) > overlap:
+                    break
+                overlap_text.insert(0, s)
+                overlap_length += len(s) + 1
+
+            current_chunk = overlap_text + [sentence]
+            current_length = overlap_length + sentence_len
+        else:
+            current_chunk.append(sentence)
+            current_length += sentence_len + 1
+
+    # Add the final chunk
+    if current_chunk:
+        chunk_text = " ".join(current_chunk)
         chunks.append(
             TextChunk(
                 chunk_id=f"{doc.doc_id}_chunk_{index}",
@@ -72,20 +115,17 @@ def chunk_document(
                 source=doc.source,
                 title=doc.title,
                 url=doc.url,
+                timestamp=doc.timestamp,
             )
         )
-
-        # Move forward by (chunk_size - overlap) so next chunk overlaps
-        start += chunk_size - overlap
-        index += 1
 
     return chunks
 
 
 def chunk_all_documents(
     docs: list[UnifiedDocument],
-    chunk_size: int = 300,
-    overlap: int = 50,
+    chunk_size: int = 1500,
+    overlap: int = 250,
 ) -> list[TextChunk]:
     """
     Chunks an entire list of UnifiedDocuments.

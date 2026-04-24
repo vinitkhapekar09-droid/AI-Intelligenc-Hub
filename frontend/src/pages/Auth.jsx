@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -10,10 +10,16 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const { login } = useAuth();
+  const { isLoggedIn, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const nextPath = location.state?.from?.pathname || "/chat";
+  const nextPath = location.state?.from?.pathname || "/";
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      navigate("/", { replace: true });
+    }
+  }, [isLoggedIn, navigate]);
 
   const applyLogin = (data) => {
     const token = data?.token || data?.access_token;
@@ -51,8 +57,7 @@ function AuthPage() {
   };
 
   return (
-    <>
-      <main className="flex-grow flex items-center justify-center px-gutter min-h-screen bg-surface">
+    <main className="flex flex-1 items-center justify-center bg-surface px-gutter py-16">
         <div className="w-full max-w-[440px]">
           <div className="flex flex-col items-center mb-xl">
             <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center mb-md">
@@ -108,22 +113,10 @@ function AuthPage() {
           </div>
 
           <p className="mt-lg text-center font-label-md text-label-md text-on-surface-variant">
-            By signing in, you agree to our <a className="text-primary hover:underline" href="#">Terms of Service</a> and <a className="text-primary hover:underline" href="#">Privacy Policy</a>.
+            By signing in, you agree to our <a className="text-primary hover:underline" href="/terms">Terms of Service</a> and <a className="text-primary hover:underline" href="/privacy">Privacy Policy</a>.
           </p>
         </div>
       </main>
-
-      <footer className="bg-white border-t border-slate-200">
-        <div className="flex flex-col md:flex-row justify-between items-center w-full px-6 py-8 mt-auto max-w-7xl mx-auto">
-          <span className="font-bold text-slate-900">© 2024 AI Intelligence Hub</span>
-          <div className="flex space-x-md mt-md md:mt-0">
-            <a className="font-['Inter'] text-xs text-slate-500 hover:text-blue-600 transition-colors" href="#">Privacy Policy</a>
-            <a className="font-['Inter'] text-xs text-slate-500 hover:text-blue-600 transition-colors" href="#">Terms of Service</a>
-            <a className="font-['Inter'] text-xs text-slate-500 hover:text-blue-600 transition-colors" href="#">Help Center</a>
-          </div>
-        </div>
-      </footer>
-    </>
   );
 }
 

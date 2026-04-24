@@ -63,8 +63,7 @@ services:
       - DATABASE_URL=postgresql://digest_user:password123@db:5432/daily_digest
       - REDIS_URL=redis://redis:6379/0
       - MLFLOW_TRACKING_URL=http://mlflow:5000
-    volumes:
-      - chroma_data:/tmp/chroma
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
   # ── Celery Worker ─────────────────────────────────────────
   worker:
@@ -85,8 +84,6 @@ services:
       - DATABASE_URL=postgresql://digest_user:password123@db:5432/daily_digest
       - REDIS_URL=redis://redis:6379/0
       - MLFLOW_TRACKING_URL=http://mlflow:5000
-    volumes:
-      - chroma_data:/tmp/chroma
 
   # ── Celery Beat ───────────────────────────────────────────
   beat:
@@ -114,15 +111,14 @@ services:
       context: .
       dockerfile: infra/docker/Dockerfile.frontend
       args:
-        VITE_API_BASE: http://api:8000
+        VITE_API_BASE: /api
     ports:
       - "3000:80"
     environment:
-      - VITE_API_BASE=http://api:8000
+      - VITE_API_BASE=/api
     depends_on:
       - api
 
 volumes:
   postgres_data:
   mlflow_data:
-  chroma_data:

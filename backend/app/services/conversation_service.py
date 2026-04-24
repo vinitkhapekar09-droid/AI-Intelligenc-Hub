@@ -1,10 +1,9 @@
 """Service for managing conversation history and memory."""
 
 import json
-from datetime import datetime
+from collections import OrderedDict
 from sqlalchemy.orm import Session
 from ..models.conversation import Conversation
-from ..models.user import User
 
 
 def save_message(
@@ -14,6 +13,7 @@ def save_message(
     message: str,
     doc_type: str | None = None,
     sources: list | None = None,
+    thread_id: str | None = None,
 ) -> Conversation:
     """
     Save a message to the conversation history.
@@ -37,6 +37,7 @@ def save_message(
         message=message,
         doc_type=doc_type,
         sources_used=sources_json,
+        thread_id=thread_id,
     )
     
     db.add(conversation)
@@ -50,6 +51,7 @@ def get_conversation_history(
     db: Session,
     user_id: int,
     limit: int = 20,
+    thread_id: str | None = None,
 ) -> list[dict]:
     """
     Get the most recent conversation history for a user.
@@ -62,9 +64,12 @@ def get_conversation_history(
     Returns:
         List of conversation messages in chronological order
     """
-    messages = db.query(Conversation).filter(
-        Conversation.user_id == user_id
-    ).order_by(
+    query = db.query(Conversation).filter(Conversation.user_id == user_id)
+
+    if thread_id:
+        query = query.filter(Conversation.thread_id == thread_id)
+
+    messages = query.order_by(
         Conversation.created_at.desc()
     ).limit(limit).all()
     
@@ -73,17 +78,23 @@ def get_conversation_history(
     
     return [
         {
+            "id": msg.id,
             "role": msg.role,
             "text": msg.message,
             "timestamp": msg.created_at.isoformat(),
             "doc_type": msg.doc_type,
             "sources": json.loads(msg.sources_used) if msg.sources_used else [],
+            "thread_id": msg.thread_id,
         }
         for msg in messages
     ]
 
 
-def clear_conversation_history(db: Session, user_id: int) -> int:
+def clear_conversation_history(
+    db: Session,
+    user_id: int,
+    thread_id: str | None = None,
+) -> int:
     """
     Clear all conversation history for a user.
     
@@ -94,12 +105,64 @@ def clear_conversation_history(db: Session, user_id: int) -> int:
     Returns:
         Number of messages deleted
     """
-    count = db.query(Conversation).filter(
-        Conversation.user_id == user_id
-    ).delete()
+    query = db.query(Conversation).filter(Conversation.user_id == user_id)
+    if thread_id is not None:
+        query = query.filter(Conversation.thread_id == thread_id)
+
+    count = query.delete()
     
     db.commit()
     return count
+
+
+def list_conversation_threads(
+    db: Session,
+    user_id: int,
+    limit: int = 30,
+) -> list[dict]:
+    """
+    Return recent conversation threads for sidebar-style navigation.
+
+    We build summaries in Python so the logic stays database-portable
+    across SQLite and Postgres without maintaining separate SQL.
+    """
+    messages = (
+        db.query(Conversation)
+        .filter(
+            Conversation.user_id == user_id,
+            Conversation.thread_id.isnot(None),
+        )
+        .order_by(Conversation.created_at.desc(), Conversation.id.desc())
+        .all()
+    )
+
+    thread_map: OrderedDict[str, dict] = OrderedDict()
+    for message in messages:
+        thread_id = message.thread_id
+        if not thread_id:
+            continue
+
+        thread = thread_map.get(thread_id)
+        if thread is None:
+            thread = {
+                "thread_id": thread_id,
+                "title": "New chat",
+                "last_message": message.message[:140],
+                "updated_at": message.created_at.isoformat(),
+                "message_count": 0,
+            }
+            thread_map[thread_id] = thread
+
+        thread["message_count"] += 1
+
+        if (
+            thread["title"] == "New chat"
+            and message.role == "user"
+            and message.message.strip()
+        ):
+            thread["title"] = message.message.strip()[:60]
+
+    return list(thread_map.values())[:limit]
 
 
 def get_conversation_summary(
