@@ -1,122 +1,32 @@
-services:
-  db:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    env_file:
-      - .env.production
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - appnet
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+name: Deploy to DigitalOcean
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
-    networks:
-      - appnet
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+on:
+  push:
+    branches: [main]
 
-  api:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile
-    restart: unless-stopped
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    env_file:
-      - .env.production
-    networks:
-      - appnet
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
 
-  worker:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile
-    restart: unless-stopped
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1
-    env_file:
-      - .env.production
-    networks:
-      - appnet
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      api:
-        condition: service_started
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_SSH_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /opt/ai_explore
 
-  beat:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile
-    restart: unless-stopped
-    command: celery -A app.core.celery_app beat --loglevel=info
-    env_file:
-      - .env.production
-    networks:
-      - appnet
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      api:
-        condition: service_started
+            echo "→ Pulling latest code"
+            git pull origin main
 
-  frontend:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.frontend
-      args:
-        VITE_API_BASE: /api
-    restart: unless-stopped
-    networks:
-      - appnet
-    depends_on:
-      - api
+            echo "→ Rebuilding containers"
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on:
-      - frontend
-    env_file:
-      - .env.production
-    networks:
-      - appnet
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+            echo "→ Pruning old images"
+            docker image prune -f
 
-volumes:
-  postgres_data:
-  redis_data:
-  caddy_data:
-  caddy_config:
-
-networks:
-  appnet:
-    driver: bridge
+            echo "✓ Deploy complete"
