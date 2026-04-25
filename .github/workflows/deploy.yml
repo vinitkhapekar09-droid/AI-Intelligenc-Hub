@@ -13,6 +13,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -26,6 +27,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   api:
     build:
       context: .
@@ -43,6 +45,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
   worker:
     build:
       context: .
@@ -60,6 +63,7 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+
   beat:
     build:
       context: .
@@ -77,6 +81,7 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+
   frontend:
     build:
       context: .
@@ -88,6 +93,7 @@ services:
       - appnet
     depends_on:
       - api
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -104,11 +110,13 @@ services:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+
 volumes:
   postgres_data:
   redis_data:
   caddy_data:
   caddy_config:
+
 networks:
   appnet:
     driver: bridge
