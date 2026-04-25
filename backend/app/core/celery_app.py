@@ -14,10 +14,9 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# Schedule the task to run every day at 8 AM IST
 celery_app.conf.beat_schedule = {
     "send_daily_digest": {
         "task": "app.tasks.digest_tasks.run_daily_digest",
-        "schedule": crontab(hour=8, minute=0),
+        "schedule": crontab(hour=2, minute=30),  # 2:30 AM UTC = 8:00 AM IST
     },
 }
