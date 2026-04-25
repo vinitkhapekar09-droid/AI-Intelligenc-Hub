@@ -1,0 +1,6 @@
+{$APP_DOMAIN} {
+    encode gzip zstd
+    tls {$ACME_EMAIL}
+
+    reverse_proxy frontend:80
+}

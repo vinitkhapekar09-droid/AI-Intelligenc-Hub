@@ -4,8 +4,15 @@ from ..core.config import settings
 resend.api_key = settings.RESEND_API_KEY
 
 
-def build_email_html(summaries: list[dict]) -> str:
+def build_email_html(summaries: list[dict], issue_date: str | None = None) -> str:
     """Build a clean HTML email from the summaries."""
+
+    workspace_url = f"{settings.APP_BASE_URL}/auth"
+    issue_url = (
+        f"{settings.APP_BASE_URL}/digest?date={issue_date}"
+        if issue_date
+        else f"{settings.APP_BASE_URL}/digest"
+    )
 
     items_html = ""
     for i, item in enumerate(summaries, 1):
@@ -18,7 +25,10 @@ def build_email_html(summaries: list[dict]) -> str:
                 <strong style="color: #4F46E5;">Why it matters:</strong>
                 <span style="color: #333;"> {item.get("why_it_matters", "")}</span>
             </div>
-            <a href="{item.get("link", "#")}" style="color: #4F46E5; font-size: 14px;">Read more →</a>
+            <div>
+                <a href="{item.get("link", "#")}" style="color: #4F46E5; font-size: 14px; margin-right: 14px;">Read source →</a>
+                <a href="{issue_url}" style="color: #111827; font-size: 14px;">Open in research workspace →</a>
+            </div>
         </div>
         """
 
@@ -29,15 +39,22 @@ def build_email_html(summaries: list[dict]) -> str:
     <body style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
 
         <div style="text-align: center; margin-bottom: 32px;">
-            <h1 style="font-size: 28px; color: #4F46E5; margin: 0;">🤖 Daily AI Digest</h1>
-            <p style="color: #888; margin: 6px 0 0 0;">Your daily dose of AI/ML — explained simply</p>
+            <h1 style="font-size: 28px; color: #4F46E5; margin: 0;">AI Intelligence Hub</h1>
+            <p style="color: #888; margin: 6px 0 0 0;">Your daily AI briefing, explained clearly</p>
+        </div>
+
+        <div style="margin-bottom: 24px; padding: 16px; background: #f5f7fb; border-radius: 8px;">
+            <p style="margin: 0 0 8px 0; color: #374151; font-size: 14px;">
+                Today's issue is ready. Read the source links directly or open the research workspace to ask follow-up questions about the day's papers and news.
+            </p>
+            <a href="{workspace_url}" style="color: #4F46E5; font-size: 14px;">Open workspace →</a>
         </div>
 
         {items_html}
 
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
             <p style="color: #aaa; font-size: 12px;">
-                You're receiving this because you subscribed to Daily AI Digest.<br>
+                You're receiving this because you subscribed to AI Intelligence Hub updates.<br>
                 <a href="https://your-domain.com/unsubscribe" style="color: #aaa;">Unsubscribe</a>
             </p>
         </div>
@@ -48,16 +65,20 @@ def build_email_html(summaries: list[dict]) -> str:
     return html
 
 
-def send_digest_to_subscriber(email: str, summaries: list[dict]) -> bool:
+def send_digest_to_subscriber(
+    email: str,
+    summaries: list[dict],
+    issue_date: str | None = None,
+) -> bool:
     """Send the digest email to a single subscriber."""
     try:
-        html_content = build_email_html(summaries)
+        html_content = build_email_html(summaries, issue_date=issue_date)
 
         resend.Emails.send(
             {
                 "from": settings.FROM_EMAIL,
                 "to": email,
-                "subject": "🤖 Your Daily AI Digest is here!",
+                "subject": "Your AI Intelligence Hub briefing is here",
                 "html": html_content,
             }
         )
@@ -70,12 +91,16 @@ def send_digest_to_subscriber(email: str, summaries: list[dict]) -> bool:
         return False
 
 
-def send_digest_to_all(summaries: list[dict], subscribers: list[str]) -> dict:
+def send_digest_to_all(
+    summaries: list[dict],
+    subscribers: list[str],
+    issue_date: str | None = None,
+) -> dict:
     """Send digest to all active subscribers."""
     results = {"success": 0, "failed": 0}
 
     for email in subscribers:
-        success = send_digest_to_subscriber(email, summaries)
+        success = send_digest_to_subscriber(email, summaries, issue_date=issue_date)
         if success:
             results["success"] += 1
         else:

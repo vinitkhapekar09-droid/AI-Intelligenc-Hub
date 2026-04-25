@@ -4,12 +4,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.exc import SQLAlchemyError
 from .api.routes import router
+from .core.config import settings
 from .core.database import Base, engine
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Create tables if DB is reachable; keep API booting in local dev otherwise."""
+    """Initialize schema in local/dev flows when explicitly enabled."""
+    if not settings.AUTO_CREATE_SCHEMA:
+        print("[startup] AUTO_CREATE_SCHEMA disabled; skipping schema creation.")
+        yield
+        return
+
     try:
         Base.metadata.create_all(bind=engine)
         print("[startup] Database schema ready.")
@@ -18,15 +24,15 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Daily AI Digest", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="AI Intelligence Hub", version="1.0.0", lifespan=lifespan)
 
 # WHY CORS middleware?
-# Streamlit runs on a different port than FastAPI.
+# Frontend runs on a different port/domain than FastAPI.
 # Without this, browsers block requests between them.
 # In production, replace "*" with your actual domain.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

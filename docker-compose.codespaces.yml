@@ -1,0 +1,19 @@
+services:
+  api:
+    environment:
+      - MLFLOW_TRACKING_URL=
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173
+
+  frontend:
+    build:
+      args:
+        VITE_API_BASE=/api
+
+  worker:
+    profiles: ["full"]
+
+  beat:
+    profiles: ["full"]
+
+  mlflow:
+    profiles: ["full"]
