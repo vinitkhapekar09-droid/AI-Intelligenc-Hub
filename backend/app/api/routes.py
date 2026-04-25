@@ -328,7 +328,7 @@ def _parse_issue_date(raw_value: Optional[str]) -> date | None:
 
 
 @router.post("/chat")
-def chat(
+async def chat(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -378,7 +378,7 @@ def chat(
     history_for_agent = saved_history if saved_history else None
 
     # Get the answer from the chat agent
-    result = ask(
+    result = await ask(
         question=request.question,
         n_results=request.n_results,
         doc_type=request.doc_type,
