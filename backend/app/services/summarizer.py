@@ -10,6 +10,9 @@ from ..core.config import settings
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
+RETRY_ATTEMPTS = 3
+RETRY_DELAY = 10  # seconds between retries
+
 
 def _init_mlflow() -> bool:
     """Initialize MLflow once; disable tracking if the server is unavailable."""
@@ -50,7 +53,6 @@ def _mlflow_run(enabled: bool):
         with mlflow.start_run():
             yield
     except Exception as e:
-        # Logging failures must never fail digest generation.
         print(f"[summarizer] MLflow run failed; continuing without tracking: {e}")
         yield
 
@@ -93,6 +95,36 @@ Items:
     return prompt
 
 
+def _call_gemini_with_retry(prompt: str) -> str | None:
+    """
+    Call Gemini with retry logic.
+    Retries up to RETRY_ATTEMPTS times on 503/transient errors.
+    Returns raw text on success, None if all attempts fail.
+    """
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            print(f"[summarizer] Gemini attempt {attempt}/{RETRY_ATTEMPTS}...")
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-lite", contents=prompt
+            )
+            return response.text.strip()
+        except Exception as e:
+            error_str = str(e)
+            is_transient = any(
+                code in error_str for code in ["503", "429", "UNAVAILABLE", "quota"]
+            )
+            if is_transient and attempt < RETRY_ATTEMPTS:
+                print(
+                    f"[summarizer] Transient error on attempt {attempt}: {e}. "
+                    f"Retrying in {RETRY_DELAY}s..."
+                )
+                time.sleep(RETRY_DELAY)
+            else:
+                print(f"[summarizer] Gemini error on attempt {attempt}: {e}")
+                return None
+    return None
+
+
 def summarize_items(items: list[dict]) -> list[dict]:
     if not items:
         return []
@@ -105,12 +137,12 @@ def summarize_items(items: list[dict]) -> list[dict]:
         try:
             start_time = time.time()
 
-            response = client.models.generate_content(
-                model="gemini-3.1-flash-lite-preview", contents=prompt
-            )
+            raw_text = _call_gemini_with_retry(prompt)
+            if raw_text is None:
+                print("[summarizer] All Gemini attempts failed.")
+                return []
 
             latency = round(time.time() - start_time, 2)
-            raw_text = response.text.strip()
 
             if raw_text.startswith("```"):
                 raw_text = raw_text.split("```")[1]
@@ -119,12 +151,11 @@ def summarize_items(items: list[dict]) -> list[dict]:
 
             summaries = json.loads(raw_text)
 
-            # Log to MLflow
             _mlflow_log(
                 mlflow_enabled,
                 mlflow.log_param,
                 "model",
-                "gemini-3.1-flash-lite-preview",
+                "gemini-2.0-flash-lite",
             )
             _mlflow_log(mlflow_enabled, mlflow.log_param, "num_input_items", len(items))
             _mlflow_log(mlflow_enabled, mlflow.log_param, "prompt_length", len(prompt))
@@ -150,5 +181,5 @@ def summarize_items(items: list[dict]) -> list[dict]:
 
         except Exception as e:
             _mlflow_log(mlflow_enabled, mlflow.log_param, "error", str(e))
-            print(f"[summarizer] Gemini error: {e}")
+            print(f"[summarizer] Unexpected error: {e}")
             return []
