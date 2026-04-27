@@ -105,7 +105,7 @@ def _call_gemini_with_retry(prompt: str) -> str | None:
         try:
             print(f"[summarizer] Gemini attempt {attempt}/{RETRY_ATTEMPTS}...")
             response = client.models.generate_content(
-                model="gemini-2.0-flash-lite", contents=prompt
+                model="gemini-1.5-flash", contents=prompt
             )
             return response.text.strip()
         except Exception as e:
@@ -155,7 +155,7 @@ def summarize_items(items: list[dict]) -> list[dict]:
                 mlflow_enabled,
                 mlflow.log_param,
                 "model",
-                "gemini-2.0-flash-lite",
+                "gemini-1.5-flash",
             )
             _mlflow_log(mlflow_enabled, mlflow.log_param, "num_input_items", len(items))
             _mlflow_log(mlflow_enabled, mlflow.log_param, "prompt_length", len(prompt))
