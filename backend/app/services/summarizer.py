@@ -5,17 +5,16 @@ from contextlib import contextmanager
 from urllib.parse import urlparse
 
 import mlflow
-from google import genai
+from groq import Groq
 from ..core.config import settings
 
-client = genai.Client(api_key=settings.GEMINI_API_KEY)
+client = Groq(api_key=settings.GROQ_API_KEY)
 
 RETRY_ATTEMPTS = 3
-RETRY_DELAY = 10  # seconds between retries
+RETRY_DELAY = 10
 
 
 def _init_mlflow() -> bool:
-    """Initialize MLflow once; disable tracking if the server is unavailable."""
     if not settings.MLFLOW_TRACKING_URL.strip():
         return False
 
@@ -48,7 +47,6 @@ def _mlflow_run(enabled: bool):
     if not enabled:
         yield
         return
-
     try:
         with mlflow.start_run():
             yield
@@ -60,7 +58,6 @@ def _mlflow_run(enabled: bool):
 def _mlflow_log(enabled: bool, log_fn, *args, **kwargs) -> None:
     if not enabled:
         return
-
     try:
         log_fn(*args, **kwargs)
     except Exception as e:
@@ -78,8 +75,7 @@ Source: {item["source"]}
 Link: {item["link"]}
 """
 
-    prompt = f"""
-You are an AI newsletter writer. Your job is to explain recent AI/ML research and news in very simple language for a general audience.
+    prompt = f"""You are an AI newsletter writer. Your job is to explain recent AI/ML research and news in very simple language for a general audience.
 
 Below are {len(items)} recent AI/ML items. For each one, return a JSON array where each object has exactly these fields:
 - "headline": a short, engaging title (max 10 words)
@@ -90,28 +86,38 @@ Below are {len(items)} recent AI/ML items. For each one, return a JSON array whe
 Return ONLY a valid JSON array. No markdown, no backticks, no explanation. Just the raw JSON array.
 
 Items:
-{items_text}
-"""
+{items_text}"""
     return prompt
 
 
-def _call_gemini_with_retry(prompt: str) -> str | None:
+def _call_groq_with_retry(prompt: str) -> str | None:
     """
-    Call Gemini with retry logic.
-    Retries up to RETRY_ATTEMPTS times on 503/transient errors.
+    Call Groq with retry logic for transient errors.
     Returns raw text on success, None if all attempts fail.
     """
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
-            print(f"[summarizer] Gemini attempt {attempt}/{RETRY_ATTEMPTS}...")
-            response = client.models.generate_content(
-                model="gemini-1.5-flash", contents=prompt
+            print(f"[summarizer] Groq attempt {attempt}/{RETRY_ATTEMPTS}...")
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an AI newsletter writer. Always respond with valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.3,
+                max_tokens=2000,
             )
-            return response.text.strip()
+            return response.choices[0].message.content.strip()
         except Exception as e:
             error_str = str(e)
             is_transient = any(
-                code in error_str for code in ["503", "429", "UNAVAILABLE", "quota"]
+                code in error_str for code in ["503", "429", "rate_limit", "timeout"]
             )
             if is_transient and attempt < RETRY_ATTEMPTS:
                 print(
@@ -120,7 +126,7 @@ def _call_gemini_with_retry(prompt: str) -> str | None:
                 )
                 time.sleep(RETRY_DELAY)
             else:
-                print(f"[summarizer] Gemini error on attempt {attempt}: {e}")
+                print(f"[summarizer] Groq error on attempt {attempt}: {e}")
                 return None
     return None
 
@@ -137,13 +143,14 @@ def summarize_items(items: list[dict]) -> list[dict]:
         try:
             start_time = time.time()
 
-            raw_text = _call_gemini_with_retry(prompt)
+            raw_text = _call_groq_with_retry(prompt)
             if raw_text is None:
-                print("[summarizer] All Gemini attempts failed.")
+                print("[summarizer] All Groq attempts failed.")
                 return []
 
             latency = round(time.time() - start_time, 2)
 
+            # Strip markdown fences if present
             if raw_text.startswith("```"):
                 raw_text = raw_text.split("```")[1]
                 if raw_text.startswith("json"):
@@ -151,21 +158,11 @@ def summarize_items(items: list[dict]) -> list[dict]:
 
             summaries = json.loads(raw_text)
 
-            _mlflow_log(
-                mlflow_enabled,
-                mlflow.log_param,
-                "model",
-                "gemini-1.5-flash",
-            )
+            _mlflow_log(mlflow_enabled, mlflow.log_param, "model", "llama-3.3-70b-versatile")
             _mlflow_log(mlflow_enabled, mlflow.log_param, "num_input_items", len(items))
             _mlflow_log(mlflow_enabled, mlflow.log_param, "prompt_length", len(prompt))
             _mlflow_log(mlflow_enabled, mlflow.log_metric, "latency_seconds", latency)
-            _mlflow_log(
-                mlflow_enabled,
-                mlflow.log_metric,
-                "num_summaries_returned",
-                len(summaries),
-            )
+            _mlflow_log(mlflow_enabled, mlflow.log_metric, "num_summaries_returned", len(summaries))
             _mlflow_log(mlflow_enabled, mlflow.log_text, prompt, "prompt.txt")
             _mlflow_log(mlflow_enabled, mlflow.log_text, raw_text, "response.txt")
 
@@ -173,9 +170,7 @@ def summarize_items(items: list[dict]) -> list[dict]:
             return summaries
 
         except json.JSONDecodeError as e:
-            _mlflow_log(
-                mlflow_enabled, mlflow.log_param, "error", f"JSON parse error: {e}"
-            )
+            _mlflow_log(mlflow_enabled, mlflow.log_param, "error", f"JSON parse error: {e}")
             print(f"[summarizer] JSON parse error: {e}")
             return []
 
