@@ -28,6 +28,8 @@ from ..core.auth import (
     get_current_user,
 )
 from fastapi import status
+from app.main import limiter
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 
 router = APIRouter()
@@ -132,7 +134,8 @@ def health_details(db: Session = Depends(get_db)):
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     """
     Register a new user account.
 
@@ -187,7 +190,8 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     """
     Login an existing user and return JWT token.
 
@@ -328,8 +332,10 @@ def _parse_issue_date(raw_value: Optional[str]) -> date | None:
 
 
 @router.post("/chat")
+@limiter.limit("30/minute")
 async def chat(
-    request: ChatRequest,
+    request: Request,
+    body: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
