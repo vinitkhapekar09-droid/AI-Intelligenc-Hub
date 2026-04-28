@@ -60,23 +60,6 @@ services:
         condition: service_healthy
       api:
         condition: service_started
-  beat:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile
-    restart: unless-stopped
-    command: celery -A app.core.celery_app beat --loglevel=info
-    env_file:
-      - .env.production
-    networks:
-      - appnet
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      api:
-        condition: service_started
   frontend:
     build:
       context: .
