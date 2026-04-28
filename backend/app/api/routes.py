@@ -136,32 +136,19 @@ def health_details(db: Session = Depends(get_db)):
 def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     """
     Register a new user account.
-
-    Args:
-        request: RegisterRequest with name, email, password
-        db: Database session
-
-    Returns:
-        TokenResponse with JWT token, token type, and user name
-
-    Raises:
-        HTTPException 400: If email already exists
-        HTTPException 503: If database is unavailable
     """
     try:
-        # Check if email already exists
-        existing_user = db.query(User).filter(User.email == request.email).first()
+        existing_user = db.query(User).filter(User.email == body.email).first()
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered",
             )
 
-        # Create new user with hashed password
-        hashed_pwd = hash_password(request.password)
+        hashed_pwd = hash_password(body.password)
         new_user = User(
-            name=request.name,
-            email=request.email,
+            name=body.name,
+            email=body.email,
             hashed_password=hashed_pwd,
             is_active=True,
         )
@@ -169,7 +156,6 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
         db.commit()
         db.refresh(new_user)
 
-        # Generate JWT token
         access_token = create_access_token(data={"sub": new_user.email})
 
         return TokenResponse(
@@ -192,26 +178,15 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
 def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     """
     Login an existing user and return JWT token.
-
-    Args:
-        request: LoginRequest with email and password
-        db: Database session
-
-    Returns:
-        TokenResponse with JWT token, token type, and user name
-
-    Raises:
-        HTTPException 401: If email not found or password incorrect
-        HTTPException 503: If database is unavailable
     """
     try:
-        user = db.query(User).filter(User.email == request.email).first()
+        user = db.query(User).filter(User.email == body.email).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
             )
 
-        if not verify_password(request.password, user.hashed_password):
+        if not verify_password(body.password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password"
             )
@@ -222,7 +197,6 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
                 detail="User account is inactive",
             )
 
-        # Generate JWT token
         access_token = create_access_token(data={"sub": user.email})
 
         return TokenResponse(
@@ -286,7 +260,6 @@ def trigger_digest(_verified: None = Depends(verify_trigger_digest_token)):
     from ..tasks.digest_tasks import run_daily_digest
 
     try:
-        # Manual trigger does not need result backend subscriptions.
         task = run_daily_digest.apply_async(ignore_result=True)
         return {"message": "Daily digest task triggered", "task_id": task.id}
     except Exception as e:
@@ -299,7 +272,7 @@ def trigger_digest(_verified: None = Depends(verify_trigger_digest_token)):
         )
 
 
-# --- NEW: Chat and Digest endpoints ---
+# --- Chat and Digest endpoints ---
 
 
 class ChatMessage(BaseModel):
@@ -309,8 +282,8 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    doc_type: Optional[str] = None  # Optional: "news", "research", or None for both
-    n_results: int = 5  # How many chunks to retrieve
+    doc_type: Optional[str] = None
+    n_results: int = 5
     thread_id: Optional[str] = None
     issue_date: Optional[str] = None
     history: List[ChatMessage] = []
@@ -339,16 +312,6 @@ async def chat(
 ):
     """
     RAG-based chat endpoint with persistent memory.
-    User asks a question, gets an answer grounded in ingested AI/ML content.
-    Conversation is saved to database for future context.
-
-    This endpoint requires valid JWT authentication.
-    Include Authorization: Bearer <token> header.
-
-    Features:
-    - Persistent conversation memory (no more context loss on reload!)
-    - Multi-turn conversation support
-    - Answer grounded in retrieval-augmented generation
     """
     if not current_user.is_active:
         raise HTTPException(
@@ -362,12 +325,11 @@ async def chat(
         get_conversation_history,
     )
 
-    if not request.question.strip():
+    if not body.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    effective_thread_id = request.thread_id or str(uuid4())
+    effective_thread_id = body.thread_id or str(uuid4())
 
-    # Load conversation history from database for context
     saved_history = get_conversation_history(
         db,
         current_user.id,
@@ -378,45 +340,40 @@ async def chat(
         f"[chat] Loaded {len(saved_history)} messages from history for user {current_user.id}"
     )
 
-    # Format history for the chat agent
     history_for_agent = saved_history if saved_history else None
 
-    # Get the answer from the chat agent
     result = await ask(
-        question=request.question,
-        n_results=request.n_results,
-        doc_type=request.doc_type,
+        question=body.question,
+        n_results=body.n_results,
+        doc_type=body.doc_type,
         history=history_for_agent,
-        issue_date=request.issue_date,
+        issue_date=body.issue_date,
     )
     print(
         f"[chat] Agent found {result['chunks_found']} chunks, used {len(result['sources'])} sources"
     )
 
-    # Save user message to conversation history
     try:
         save_message(
             db,
             user_id=current_user.id,
             role="user",
-            message=request.question,
-            doc_type=request.doc_type,
+            message=body.question,
+            doc_type=body.doc_type,
             thread_id=effective_thread_id,
         )
 
-        # Save assistant response to conversation history
         save_message(
             db,
             user_id=current_user.id,
             role="assistant",
             message=result["answer"],
-            doc_type=request.doc_type,
+            doc_type=body.doc_type,
             sources=result["sources"],
             thread_id=effective_thread_id,
         )
     except Exception as e:
         print(f"[chat] Failed to save conversation history: {e}")
-        # Don't fail the response if history saving fails
 
     return {
         **result,
@@ -463,15 +420,6 @@ def get_chat_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get the user's conversation history for memory/context.
-
-    Args:
-        limit: Maximum number of messages to retrieve (default 20)
-
-    Returns:
-        List of conversation messages with timestamps and sources
-    """
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -505,10 +453,6 @@ def clear_chat_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Clear all conversation history for the current user.
-    This allows users to start fresh if desired.
-    """
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -576,10 +520,6 @@ def get_chat_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get statistics about the user's conversations.
-    Shows message counts, preferences, and insights.
-    """
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -677,6 +617,3 @@ def get_feed(
         "status": "ok",
         "items": items,
     }
-
-
-# --- END OF NEW ENDPOINTS ---
