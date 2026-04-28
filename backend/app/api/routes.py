@@ -28,7 +28,7 @@ from ..core.auth import (
     get_current_user,
 )
 from fastapi import status
-from app.main import limiter
+from app.core.limiter import limiter
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 

@@ -6,6 +6,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from .api.routes import router
 from .core.config import settings
 from .core.database import Base, engine
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from .core.limiter import limiter
 
 
 @asynccontextmanager
@@ -25,6 +28,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="AI Intelligence Hub", version="1.0.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # WHY CORS middleware?
 # Frontend runs on a different port/domain than FastAPI.
