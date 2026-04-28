@@ -1,6 +1,6 @@
 # AI Project Context
 
-Last updated: 2026-04-24
+Last updated: 2026-04-27
 Repository root: `/workspaces/ai_explore`
 
 ## How To Use This File
@@ -46,10 +46,23 @@ Current product surfaces:
    - stores a `DailyIssue` and `ContentItem` rows in SQL
    - chunks, embeds, and stores the same documents in a SQL-backed RAG chunk store
    - emails active subscribers
+   - runs automatically at 8:00 AM IST daily via Celery Beat
 
 ## What Changed Recently
 
-Recent repo work completed:
+Recent repo work completed (2026-04-27 deployment session):
+
+- fixed chat route: `async def chat` and `await ask()` — was causing `TypeError: coroutine object is not subscriptable`
+- fixed Celery Beat schedule UTC math: `crontab(hour=2, minute=30)` = 8:00 AM IST
+- added explicit `appnet` Docker network to `docker-compose.prod.yml` so all services can resolve each other by name
+- fixed Caddyfile to route `/api/*` to backend and everything else to frontend
+- removed old `deploy-droplet.yml` workflow that was conflicting with new deploy pipeline
+- added `deploy.yml` — SSH-based auto-deploy workflow triggered on push to `main`
+- deployed to DigitalOcean droplet at `165.22.222.157`
+- enabled UFW firewall (ports 22, 80, 443 only) — TODO: still needs to be done
+- app is live and serving HTTP on `http://165.22.222.157`
+
+Previous repo work completed (2026-04-24):
 
 - cleaned the project surface and moved project notes into `docs/`
 - removed generated junk from the repo and tightened `.gitignore`
@@ -100,9 +113,10 @@ Recent repo work completed:
 ### Infra
 
 - Docker / Docker Compose
-- GitHub Actions
+- GitHub Actions (CI + auto-deploy)
 - Nginx for local/frontend container proxying
-- Caddy for cheap production HTTPS on a single Droplet
+- Caddy for production HTTP/HTTPS on a single Droplet
+- DigitalOcean droplet: `165.22.222.157` (Ubuntu 24.04, 1vCPU 2GB RAM)
 
 ## Real Directory Map
 
@@ -139,14 +153,20 @@ docs/
 
 infra/
   caddy/
-    Caddyfile
+    Caddyfile          # routes /api/* to backend, everything else to frontend
   docker/
     Dockerfile
     Dockerfile.frontend
     nginx.conf
 
+.github/
+  workflows/
+    ci.yml             # test + lint on push to dev or main
+    cd.yml             # build and push docker image
+    deploy.yml         # SSH deploy to DigitalOcean on push to main
+
 docker-compose.yml         # local/dev stack
-docker-compose.prod.yml    # low-cost single-droplet production stack
+docker-compose.prod.yml    # low-cost single-droplet production stack (with appnet network)
 ```
 
 ## Source Of Truth Files
@@ -158,6 +178,7 @@ If someone needs to understand the current app fast, start here:
 - `backend/app/core/config.py`
 - `backend/app/core/database.py`
 - `backend/app/core/auth.py`
+- `backend/app/core/celery_app.py`
 - `backend/app/tasks/digest_tasks.py`
 - `backend/app/agents/chat_agent.py`
 - `backend/app/services/digest_store.py`
@@ -173,6 +194,8 @@ If someone needs to understand the current app fast, start here:
 - `frontend/src/pages/Landing.jsx`
 - `frontend/src/context/AuthContext.jsx`
 - `docker-compose.prod.yml`
+- `infra/caddy/Caddyfile`
+- `.github/workflows/deploy.yml`
 - `docs/DEPLOY_DIGITALOCEAN.md`
 
 ## Backend Architecture
@@ -210,6 +233,8 @@ Important env vars:
 - `EMBEDDING_MODEL`
 - `EMBEDDING_DIMENSIONS`
 - `APP_BASE_URL`
+- `APP_DOMAIN`
+- `ACME_EMAIL`
 
 Production validation now happens in config:
 
@@ -242,6 +267,7 @@ Current behavior:
 
 - `backend/alembic/env.py` now uses the same resolved database URL as app startup
 - in local/dev, `alembic upgrade head` can fall back to `backend/.local/daily_digest.db` if Postgres is unavailable
+- in production, `alembic upgrade head` runs automatically before Uvicorn starts (see `docker-compose.prod.yml` api command)
 
 Use:
 
@@ -265,6 +291,17 @@ alembic revision --autogenerate -m "describe change"
 - creates JWTs with `sub=email`
 - uses bearer token auth
 - resolves current user from token and DB lookup
+
+### Celery Beat Schedule
+
+`backend/app/core/celery_app.py`:
+
+- broker and backend: Redis
+- timezone: `Asia/Kolkata` with `enable_utc=True`
+- beat schedule: `crontab(hour=2, minute=30)` = 8:00 AM IST = 2:30 AM UTC
+- task: `app.tasks.digest_tasks.run_daily_digest`
+
+**Important:** Because `enable_utc=True`, the crontab must be specified in UTC. 2:30 AM UTC = 8:00 AM IST.
 
 ## Data Models
 
@@ -345,7 +382,12 @@ Current backend endpoints in `backend/app/api/routes.py`:
 
 - `POST /trigger-digest`
 
-This endpoint now requires the `X-Trigger-Token` header and should not be treated as a fully public route anymore.
+Requires `X-Trigger-Token` header matching `TRIGGER_DIGEST_TOKEN` env var. Use to manually trigger the digest pipeline:
+
+```bash
+curl -X POST http://165.22.222.157/api/trigger-digest \
+  -H "X-Trigger-Token: your_token_here"
+```
 
 ### Authenticated
 
@@ -363,7 +405,8 @@ This endpoint now requires the `X-Trigger-Token` header and should not be treate
 - `/chat` always resolves to a concrete `thread_id`
 - `/chat/history` can load a specific thread with `thread_id`
 - `/feed` can filter by `issue_date` and `doc_type`
-- `/trigger-digest` is now protected by env-configured token auth
+- `/trigger-digest` is protected by env-configured token auth
+- the `chat` route is `async def` and calls `await ask()` — both must stay async
 
 ## Digest Pipeline
 
@@ -430,6 +473,7 @@ MLflow is now optional in practice:
 
 - uses Groq client
 - model: `llama-3.1-8b-instant`
+- `ask()` is `async def` — must always be called with `await`
 - sanitizes input
 - handles greetings and identity/meta questions
 - rewrites vague prompts into retrieval-friendly queries
@@ -514,8 +558,6 @@ Current home behavior:
 - guests: `Home`, `Chat`
 - authenticated users: `Home`, `Research`
 
-Because `/` is now auth-aware, the old separate top-level feed nav item was removed.
-
 ## Runtime And Deployment
 
 ### Local/dev stack
@@ -532,9 +574,9 @@ Because `/` is now auth-aware, the old separate top-level feed nav item was remo
 
 Local frontend talks to backend through `/api` inside the Nginx container.
 
-### Cheap production stack
+### Production stack
 
-`docker-compose.prod.yml` is the current recommended deployment path for a cost-constrained launch.
+`docker-compose.prod.yml` is the current recommended deployment path.
 
 Services:
 
@@ -546,13 +588,60 @@ Services:
 - `frontend`
 - `caddy`
 
+All services are on the explicit `appnet` bridge network so container DNS resolution works correctly (e.g. Caddy can reach `api:8000`).
+
 Key production choices:
 
-- single DigitalOcean Droplet
-- Caddy handles HTTPS
+- single DigitalOcean Droplet at `165.22.222.157`
+- Caddy handles routing (HTTP for now, HTTPS ready when domain is added)
 - MLflow disabled by default
 - API container runs `alembic upgrade head` before starting Uvicorn
 - frontend uses `/api` proxying instead of a hardcoded backend hostname
+
+### Caddyfile
+
+Current Caddyfile (`infra/caddy/Caddyfile`) routes HTTP on port 80:
+
+```
+:80 {
+    encode gzip zstd
+
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy api:8000
+    }
+
+    handle {
+        reverse_proxy frontend:80
+    }
+}
+```
+
+When a domain is added, update to:
+
+```
+yourdomain.com {
+    encode gzip zstd
+    tls your@email.com
+
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy api:8000
+    }
+
+    handle {
+        reverse_proxy frontend:80
+    }
+}
+```
+
+And update `.env.production`:
+```
+APP_DOMAIN=yourdomain.com
+ACME_EMAIL=your@email.com
+APP_BASE_URL=https://yourdomain.com
+CORS_ORIGINS=https://yourdomain.com
+```
 
 Main deployment doc:
 
@@ -566,7 +655,7 @@ Main production env template:
 
 ### CI
 
-`.github/workflows/ci.yml` now:
+`.github/workflows/ci.yml`:
 
 - runs on push/PR to `dev` or `main`
 - provisions Postgres and Redis
@@ -575,16 +664,38 @@ Main production env template:
 - runs backend pytest
 - installs frontend deps
 - builds the frontend
-- builds backend and frontend Docker images without pushing
 
-### Deployment workflow
+### CD
 
-`.github/workflows/deploy-droplet.yml`:
+`.github/workflows/cd.yml`:
 
-- deploys to a pre-provisioned DigitalOcean Droplet over SSH
-- assumes repo lives at `/opt/ai_explore`
-- assumes `.env.production` already exists on the server
+- builds backend and frontend Docker images
+
+### Deploy
+
+`.github/workflows/deploy.yml`:
+
+- triggers only on push to `main`
+- SSHs into the DigitalOcean droplet using `DO_SSH_PRIVATE_KEY` secret
+- runs `git pull origin main`
 - runs `docker compose -f docker-compose.prod.yml up -d --build --remove-orphans`
+- runs `docker image prune -f`
+
+Required GitHub secrets:
+
+| Secret | Value |
+|--------|-------|
+| `DO_HOST` | `165.22.222.157` |
+| `DO_SSH_USER` | `root` |
+| `DO_SSH_PRIVATE_KEY` | Contents of `~/.ssh/deploy_key` on the droplet |
+
+The deploy key is at `~/.ssh/deploy_key` on the droplet. Public key is in `~/.ssh/authorized_keys`.
+
+### Branch strategy
+
+- work on `dev` branch
+- merge to `main` when ready to deploy
+- every push to `main` auto-deploys to the droplet
 
 ## How To Run Key Commands Yourself
 
@@ -612,39 +723,11 @@ cd /workspaces/ai_explore
 bash scripts/run_local_frontend.sh
 ```
 
-This is now the preferred local path because:
-
-- backend uses the known SQLite demo DB
-- frontend proxies `/api` through Vite
-- no manual CORS tweaking or port juggling is needed
-
 ### Run backend tests
 
 ```bash
 cd /workspaces/ai_explore
 ./.venv/bin/pytest tests/test_api.py -v
-```
-
-Test behavior:
-
-- `tests/test_api.py` now defaults to a fresh temporary SQLite file each run
-- local dev subscriber data should no longer leak into API test outcomes
-- set `TEST_DATABASE_URL` if you want to force a specific test database
-
-If the environment is flaky, force explicit test env vars:
-
-```bash
-cd /workspaces/ai_explore
-env \
-  TEST_DATABASE_URL=sqlite:///test_api_fresh.db \
-  GEMINI_API_KEY=test \
-  RESEND_API_KEY=test \
-  NEWS_API_KEY=test \
-  MLFLOW_TRACKING_URL=http://localhost:5000 \
-  SECRET_KEY=test-secret-key \
-  ENVIRONMENT=testing \
-  TRIGGER_DIGEST_TOKEN=test-trigger-token \
-  ./.venv/bin/pytest tests/test_api.py -vv
 ```
 
 ### Run Alembic migrations locally
@@ -668,27 +751,6 @@ cd /workspaces/ai_explore/frontend
 VITE_API_BASE=/api npm run build
 ```
 
-### Start the cheap production stack locally
-
-```bash
-cd /workspaces/ai_explore
-cp .env.production.example .env.production
-docker compose -f docker-compose.prod.yml up -d --build
-```
-
-### Codespaces-friendly Docker run
-
-```bash
-cd /workspaces/ai_explore
-docker compose -f docker-compose.yml -f docker-compose.codespaces.yml up --build db redis api frontend
-```
-
-Enable worker, beat, and mlflow only when needed:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.codespaces.yml --profile full up --build
-```
-
 ### Populate demo data quickly
 
 ```bash
@@ -703,36 +765,79 @@ cd /workspaces/ai_explore
 ./.venv/bin/python scripts/populate_project.py --mode live --max-items 8
 ```
 
-### Run the smoke test
+### Manually trigger digest on production
 
 ```bash
-cd /workspaces/ai_explore
-./.venv/bin/python scripts/smoke_test.py --base-url http://localhost:8000 --expect-data
+curl -X POST http://165.22.222.157/api/trigger-digest \
+  -H "X-Trigger-Token: your_trigger_token"
 ```
 
-### Check production-style logs
+### Watch production logs
 
 ```bash
-docker compose -f docker-compose.prod.yml ps
+ssh root@165.22.222.157
+cd /opt/ai_explore
 docker compose -f docker-compose.prod.yml logs -f api
 docker compose -f docker-compose.prod.yml logs -f worker
+docker compose -f docker-compose.prod.yml logs -f beat
+```
+
+### Check production container status
+
+```bash
+ssh root@165.22.222.157
+cd /opt/ai_explore
+docker compose -f docker-compose.prod.yml ps
+```
+
+### Deploy manually (without GitHub Actions)
+
+```bash
+ssh root@165.22.222.157
+cd /opt/ai_explore
+git pull origin main
+docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+docker image prune -f
 ```
 
 ## Known Gaps
 
 Important current caveats:
 
-1. `README.md` is improved but still retains some older digest-era framing.
+1. `README.md` still retains some older digest-era framing.
 2. Product naming is still mixed between `Daily AI Digest` and `AI Intelligence Hub`.
-3. Full local verification is not fully settled yet because:
-   - frontend dependencies were cleaned and need reinstall before frontend build can be rerun locally
-   - `pytest tests/test_api.py` was observed hanging during collection in this environment and may need debugging
-4. Alembic exists now, but only the initial migration has been added so far.
-5. Production deploy workflow assumes the Droplet is already provisioned manually once.
-6. `is_pinned` exists in the conversation schema but has no current product flow.
-7. Daily task run tracking exists now, but alerting/notifications for failures still do not.
+3. No HTTPS yet — running on raw HTTP. Needs a domain + Caddyfile update to enable TLS.
+4. No UFW firewall enabled yet on the droplet — all ports are open.
+5. No rate limiting on `/login`, `/register`, `/chat` — vulnerable to brute force.
+6. Root SSH login is enabled — should create a non-root deploy user.
+7. No request size limits on `/chat` — large payloads could spike API costs.
+8. JWT tokens are not revocable — stolen tokens stay valid until expiry.
+9. `is_pinned` exists in the conversation schema but has no current product flow.
+10. Daily task run tracking exists, but alerting/notifications for failures still do not.
+11. Alembic exists with only the initial migration so far.
+12. `pytest tests/test_api.py` was observed hanging during collection in Codespaces — may need debugging.
+
+## Security Checklist (Priority Order)
+
+- [ ] Enable UFW firewall: `ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable`
+- [ ] Get domain and enable HTTPS via Caddy
+- [ ] Add rate limiting with `slowapi` on `/login`, `/register`, `/chat`
+- [ ] Create non-root SSH user and disable root login
+- [ ] Add request size limits in FastAPI
+- [ ] Add JWT token revocation via Redis blocklist
 
 ## Change Log
+
+### 2026-04-27
+
+- fixed critical bug: chat route was `def` calling `async ask()` without `await` — caused `TypeError: coroutine object is not subscriptable`
+- fixed Celery Beat schedule: corrected UTC math so 8AM IST fires correctly at `crontab(hour=2, minute=30)`
+- added explicit `appnet` bridge network to `docker-compose.prod.yml` — fixes Caddy DNS resolution to API container
+- fixed Caddyfile: added `/api/*` routing to backend, all other traffic to frontend
+- removed conflicting `deploy-droplet.yml` workflow
+- added `deploy.yml` — SSH-based GitHub Actions auto-deploy on push to `main`
+- completed fresh DigitalOcean deployment at `165.22.222.157`
+- app is live and fully operational: frontend, API, chat, RAG, Celery Beat all running
 
 ### 2026-04-24
 
