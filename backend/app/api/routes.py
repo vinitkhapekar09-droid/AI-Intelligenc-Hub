@@ -1,7 +1,7 @@
 from datetime import date
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,9 +27,7 @@ from ..core.auth import (
     create_access_token,
     get_current_user,
 )
-from fastapi import status
 from app.core.limiter import limiter
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 
 router = APIRouter()
