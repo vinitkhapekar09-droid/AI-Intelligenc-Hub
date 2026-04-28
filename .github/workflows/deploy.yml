@@ -23,8 +23,7 @@ jobs:
             set -e
             cd /opt/ai_explore
             git pull origin main
-            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans --no-recreate beat
-            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans api worker frontend
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
             docker image prune -f
             echo Deploy complete
           "
