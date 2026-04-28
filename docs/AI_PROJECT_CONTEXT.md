@@ -830,6 +830,7 @@ Important current caveats:
 
 ### 2026-04-28
 
+- added retrying `docker pull` prefetches in `.github/workflows/deploy.yml` so transient Docker Hub timeouts are less likely to break SSH deploys
 - fix: restore correct celery worker command and remove beat schedule (1bdfc2b)
 - fix: add retry logic and network resilience to frontend Docker build (306dc5d)
 - fix: correct celery worker app reference to celery_app:celery_app (3c4884c)

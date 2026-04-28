@@ -23,6 +23,17 @@ jobs:
             set -e
             cd /opt/ai_explore
             git pull origin main
+            for image in python:3.11-slim postgres:15-alpine redis:7-alpine caddy:2-alpine; do
+              for attempt in 1 2 3; do
+                if docker pull \"$image\"; then
+                  break
+                fi
+                if [ \"$attempt\" -eq 3 ]; then
+                  exit 1
+                fi
+                sleep 3
+              done
+            done
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
             docker image prune -f
             echo Deploy complete
