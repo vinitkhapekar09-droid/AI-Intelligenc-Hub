@@ -48,7 +48,7 @@ services:
       context: .
       dockerfile: infra/docker/Dockerfile
     restart: unless-stopped
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=info --concurrency=1
     env_file:
       - .env.production
     networks:
