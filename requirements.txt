@@ -120,3 +120,4 @@ mlflow==3.11.1
 groq==0.28.0
 streamlit==1.45.0
 flower==2.0.1
+slowapi==0.1.9
