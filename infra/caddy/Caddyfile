@@ -1,5 +1,6 @@
-:80 {
+aiintelligencehub.duckdns.org {
     encode gzip zstd
+    tls you@your.email
 
     handle /api/* {
         uri strip_prefix /api

@@ -828,6 +828,14 @@ Important current caveats:
 
 ## Change Log
 
+### 2026-04-28
+
+- fix: restore correct celery worker command and remove beat schedule (1bdfc2b)
+- fix: add retry logic and network resilience to frontend Docker build (306dc5d)
+- fix: correct celery worker app reference to celery_app:celery_app (3c4884c)
+- fix: remove beat reference from deploy workflow (7927f62)
+- fix: replace Celery Beat with Linux cron for reliable daily schedule (2092d71)
+
 ### 2026-04-27
 
 - fixed critical bug: chat route was `def` calling `async ask()` without `await` — caused `TypeError: coroutine object is not subscriptable`
