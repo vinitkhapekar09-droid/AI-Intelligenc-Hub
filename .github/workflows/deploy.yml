@@ -18,4 +18,12 @@ jobs:
           ssh-keyscan -H ${{ secrets.DO_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy via SSH
-        run: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_HOST }} "cd /opt/ai_explore && git pull origin main && docker compose -f docker-compose.prod.yml up -d --build --remove-orphans && docker image prune -f && echo '==== CADDY LOGS ====' && docker compose -f docker-compose.prod.yml logs caddy --tail 100 && echo '==== PORT LISTENERS ====' && ss -ltnp 2>/dev/null | grep -E ':80|:443' || true"
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_HOST }} "
+            set -e
+            cd /opt/ai_explore
+            git pull origin main
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans --force-recreate
+            docker image prune -f
+            echo Deploy complete
+          "
