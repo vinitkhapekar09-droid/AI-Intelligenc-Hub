@@ -136,7 +136,7 @@ def summarize_items(items: list[dict]) -> list[dict]:
         return []
 
     mlflow_enabled = _init_mlflow()
-    items = items[:5]
+    items = items[:8]
     prompt = build_prompt(items)
 
     with _mlflow_run(mlflow_enabled):
