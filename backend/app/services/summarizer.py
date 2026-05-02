@@ -130,6 +130,39 @@ def _call_groq_with_retry(prompt: str) -> str | None:
                 return None
     return None
 
+def rank_items(items: list[dict], top_n: int = 8) -> list[dict]:
+    """Use Groq to rank items by importance and return top_n."""
+    if len(items) <= top_n:
+        return items
+    titles_list = ""
+    for i, item in enumerate(items):
+        titles_list += f"{i+1}. [{item['source']}] {item['title']}\n"
+    ranking_prompt = f"""You are an AI news editor selecting items for a daily AI newsletter.
+Below are {len(items)} AI/ML items. Select the {top_n} most important and diverse ones.
+Prioritize major announcements, real-world applications, and diverse topics.
+Return ONLY a JSON array of 1-based indices ordered by importance.
+Example: [3, 7, 1, 5, 9, 2, 8, 4]
+No explanation, no markdown, just the JSON array.
+Items:
+{titles_list}"""
+    try:
+        print(f"[summarizer] Ranking {len(items)} items to select top {top_n}...")
+        raw = _call_groq_with_retry(ranking_prompt)
+        if raw is None:
+            return items[:top_n]
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        indices = json.loads(raw.strip())
+        selected = [items[idx - 1] for idx in indices if 1 <= idx <= len(items)]
+        print(f"[summarizer] Selected {len(selected)} items after ranking")
+        return selected[:top_n] if selected else items[:top_n]
+    except Exception as e:
+        print(f"[summarizer] Ranking error: {e}, using original order")
+        return items[:top_n]
+
+
 
 def summarize_items(items: list[dict]) -> list[dict]:
     if not items:
