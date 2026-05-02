@@ -92,6 +92,13 @@ def store_daily_issue(
 
     stored_items = []
     for rank, document in enumerate(documents, start=1):
+	# Skip if doc_id already exists in another issue
+        existing = db.query(ContentItem).filter(
+            ContentItem.doc_id == document.doc_id
+        ).first()
+        if existing:
+            continue
+
         matched_summary = summary_by_link.get(document.url, {})
         item = ContentItem(
             issue_id=issue.id,
