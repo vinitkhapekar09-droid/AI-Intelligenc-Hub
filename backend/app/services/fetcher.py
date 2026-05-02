@@ -130,8 +130,6 @@ RSS_SOURCES = [
     ("https://venturebeat.com/category/ai/feed/", "VentureBeat AI"),
     ("https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "The Verge AI"),
     ("https://www.technologyreview.com/feed/", "MIT Technology Review"),
-    ("https://openai.com/news/rss/", "OpenAI"),
-    ("https://blogs.microsoft.com/ai/feed/", "Microsoft AI"),
     ("https://blog.google/technology/ai/rss/", "Google AI"),
 ]
 
