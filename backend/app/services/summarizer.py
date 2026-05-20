@@ -90,6 +90,91 @@ Items:
     return prompt
 
 
+def _strip_code_fences(raw_text: str) -> str:
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = text.split("```", 1)[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return text.strip()
+
+
+def _extract_json_array(raw_text: str) -> str:
+    text = _strip_code_fences(raw_text)
+    start = text.find("[")
+    end = text.rfind("]")
+
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
+
+    return text
+
+
+def _fallback_summary(item: dict) -> dict:
+    title = (item.get("title") or "AI update").strip() or "AI update"
+    item_summary = (item.get("summary") or "").strip()
+    source = (item.get("source") or "AI source").strip() or "AI source"
+
+    if item_summary:
+        simple_summary = item_summary[:280]
+        if len(item_summary) > 280:
+            simple_summary += "..."
+    else:
+        simple_summary = (
+            "This item could not be summarized automatically, but it was selected "
+            "for the daily digest because it looks relevant to current AI news."
+        )
+
+    return {
+        "headline": title,
+        "simple_summary": simple_summary,
+        "why_it_matters": (
+            f"Selected from {source} for the daily AI digest when the model output "
+            "could not be parsed cleanly."
+        ),
+        "link": item.get("link", ""),
+    }
+
+
+def _parse_summaries(raw_text: str, items: list[dict]) -> list[dict] | None:
+    try:
+        parsed = json.loads(_extract_json_array(raw_text))
+        if not isinstance(parsed, list):
+            return None
+
+        normalized: list[dict] = []
+        for index, entry in enumerate(parsed):
+            if not isinstance(entry, dict):
+                continue
+
+            source_item = items[index] if index < len(items) else {}
+            normalized.append(
+                {
+                    "headline": (
+                        str(entry.get("headline") or source_item.get("title") or "AI update")
+                        .strip()
+                        or "AI update"
+                    ),
+                    "simple_summary": (
+                        str(entry.get("simple_summary") or source_item.get("summary") or "")
+                        .strip()
+                    ),
+                    "why_it_matters": (
+                        str(
+                            entry.get("why_it_matters")
+                            or "This item matters because it is part of today's selected AI digest."
+                        ).strip()
+                    ),
+                    "link": str(entry.get("link") or source_item.get("link") or "").strip(),
+                }
+            )
+
+        return normalized or None
+    except Exception as exc:
+        print(f"[summarizer] Could not parse model response as JSON: {exc}")
+        return None
+
+
 def _call_groq_with_retry(prompt: str) -> str | None:
     """
     Call Groq with retry logic for transient errors.
@@ -179,17 +264,14 @@ def summarize_items(items: list[dict]) -> list[dict]:
             raw_text = _call_groq_with_retry(prompt)
             if raw_text is None:
                 print("[summarizer] All Groq attempts failed.")
-                return []
+                return [_fallback_summary(item) for item in items]
 
             latency = round(time.time() - start_time, 2)
 
-            # Strip markdown fences if present
-            if raw_text.startswith("```"):
-                raw_text = raw_text.split("```")[1]
-                if raw_text.startswith("json"):
-                    raw_text = raw_text[4:]
-
-            summaries = json.loads(raw_text)
+            summaries = _parse_summaries(raw_text, items)
+            if summaries is None:
+                print("[summarizer] Falling back to local summaries after parse failure.")
+                summaries = [_fallback_summary(item) for item in items]
 
             _mlflow_log(mlflow_enabled, mlflow.log_param, "model", "llama-3.3-70b-versatile")
             _mlflow_log(mlflow_enabled, mlflow.log_param, "num_input_items", len(items))
@@ -202,12 +284,7 @@ def summarize_items(items: list[dict]) -> list[dict]:
             print(f"[summarizer] Got {len(summaries)} summaries in {latency}s")
             return summaries
 
-        except json.JSONDecodeError as e:
-            _mlflow_log(mlflow_enabled, mlflow.log_param, "error", f"JSON parse error: {e}")
-            print(f"[summarizer] JSON parse error: {e}")
-            return []
-
         except Exception as e:
             _mlflow_log(mlflow_enabled, mlflow.log_param, "error", str(e))
             print(f"[summarizer] Unexpected error: {e}")
-            return []
+            return [_fallback_summary(item) for item in items]
