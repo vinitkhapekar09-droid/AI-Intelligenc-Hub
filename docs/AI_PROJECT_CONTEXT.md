@@ -1,6 +1,6 @@
 # AI Project Context
 
-Last updated: 2026-04-28 10:45 UTC
+Last updated: 2026-05-02 UTC
 Repository root: `/workspaces/ai_explore`
 
 ## How To Use This File
@@ -46,9 +46,35 @@ Current product surfaces:
    - stores a `DailyIssue` and `ContentItem` rows in SQL
    - chunks, embeds, and stores the same documents in a SQL-backed RAG chunk store
    - emails active subscribers
-   - runs automatically at 8:00 AM IST daily via Celery Beat
+  - runs automatically at 8:00 AM IST daily via cron
 
 ## What Changed Recently
+
+Recent repo work completed (2026-05-02):
+
+- added Groq importance ranking before summarization — items now ranked by relevance before being summarized
+- expanded RSS feeds: added TechCrunch, VentureBeat, Verge, MIT Tech Review (removed broken OpenAI, Google AI, Microsoft feeds)
+- fixed duplicate doc_id handling on content item insert to prevent UniqueViolation errors
+- improved deploy robustness: added `--force-recreate` to docker compose to ensure new code runs
+
+Recent repo work completed (2026-05-20):
+
+- made the digest summarizer fail open when Groq returns malformed JSON, so the email still sends with a local fallback summary instead of aborting the whole task
+
+Recent repo work completed (2026-04-29):
+
+- fixed cron to use HTTPS domain instead of `http://localhost` after DuckDNS + Caddy setup
+- updated cron command to `curl -s -L -X POST https://aiintelligencehub.duckdns.org/api/trigger-digest`
+- added failure alert email via Resend on cron failure, sent to `vinitkhapekar09@gmail.com`
+
+Recent repo work completed (2026-04-28 security session):
+
+- enabled UFW firewall (ports 22, 80, 443)
+- added custom domain aiintelligencehub.duckdns.org with HTTPS via Caddy + Let's Encrypt
+- updated Caddyfile from :80 to domain-based with TLS
+- added rate limiting with slowapi on /login (10/min), /register (5/min), /chat (30/min)
+- moved limiter to backend/app/core/limiter.py to avoid circular import
+- added 32KB request size limit middleware in main.py
 
 Recent repo work completed (2026-04-27 deployment session):
 
@@ -287,10 +313,11 @@ alembic revision --autogenerate -m "describe change"
 
 `backend/app/core/auth.py`:
 
-- hashes passwords with Argon2
+- hashes passwords with Argon2 (via `argon2-cffi`) — avoids bcrypt 72-byte limit and backend issues
 - creates JWTs with `sub=email`
 - uses bearer token auth
 - resolves current user from token and DB lookup
+- both register and login accept user data as request body
 
 ### Celery Beat Schedule
 
@@ -392,11 +419,11 @@ curl -X POST http://165.22.222.157/api/trigger-digest \
 ### Authenticated
 
 - `POST /chat`
-- `GET /chat/threads`
-- `GET /chat/history`
-- `DELETE /chat/history`
-- `DELETE /chat/threads/{thread_id}`
-- `GET /chat/stats`
+- `GET /chat/threads` — list all saved conversation threads for the user
+- `GET /chat/history` — retrieve conversation history (can filter by `thread_id`)
+- `DELETE /chat/history` — clear all conversation history
+- `DELETE /chat/threads/{thread_id}` — delete a specific thread
+- `GET /chat/stats` — get conversation statistics (total messages, threads, etc.)
 
 ### Important endpoint notes
 
@@ -414,12 +441,13 @@ Main entry point: `backend/app/tasks/digest_tasks.py`
 
 Pipeline steps:
 
-1. fetch raw items from arXiv + NewsAPI
+1. fetch raw items from arXiv + NewsAPI + RSS feeds (TechCrunch, VentureBeat, Verge, MIT Tech Review)
 2. normalize them into `UnifiedDocument`
-3. summarize up to 5 items with Gemini
-4. store/update the SQL-backed daily issue and content items
-5. send digest emails to active subscribers
-6. chunk, embed, and store the same documents in SQL with `issue_date` metadata
+3. rank items by importance with Groq LLaMA to filter highest-relevance content
+4. summarize up to 5 top-ranked items with Gemini
+5. store/update the SQL-backed daily issue and content items
+6. send digest emails to active subscribers
+7. chunk, embed, and store the same documents in SQL with `issue_date` metadata
 
 Key modules:
 
@@ -768,9 +796,24 @@ cd /workspaces/ai_explore
 ### Manually trigger digest on production
 
 ```bash
-curl -X POST http://165.22.222.157/api/trigger-digest \
+curl -X POST https://aiintelligencehub.duckdns.org/api/trigger-digest \
   -H "X-Trigger-Token: your_trigger_token"
 ```
+
+### Daily Digest Scheduling
+
+Cron entry on droplet:
+
+```bash
+30 2 * * * curl -s -L -X POST https://aiintelligencehub.duckdns.org/api/trigger-digest \
+  -H "X-Trigger-Token: <token>" >> /var/log/digest-cron.log 2>&1 \
+  || <send a Resend failure alert email to vinitkhapekar09@gmail.com>
+```
+
+Notes:
+
+- uses the HTTPS domain, not localhost; HTTP redirects to HTTPS and will fail if cron calls the old URL
+- sends a failure alert email to `vinitkhapekar09@gmail.com` via Resend if the cron command exits non-zero
 
 ### Watch production logs
 
@@ -806,29 +849,54 @@ Important current caveats:
 
 1. `README.md` still retains some older digest-era framing.
 2. Product naming is still mixed between `Daily AI Digest` and `AI Intelligence Hub`.
-3. No HTTPS yet — running on raw HTTP. Needs a domain + Caddyfile update to enable TLS.
-4. No UFW firewall enabled yet on the droplet — all ports are open.
-5. No rate limiting on `/login`, `/register`, `/chat` — vulnerable to brute force.
+3. ~~No HTTPS yet~~ — DONE: aiintelligencehub.duckdns.org live with Let's Encrypt.
+4. ~~No UFW firewall~~ — DONE: ports 22, 80, 443 open, all others blocked.
+5. ~~No rate limiting~~ — DONE: slowapi on /login, /register, /chat.
 6. Root SSH login is enabled — should create a non-root deploy user.
-7. No request size limits on `/chat` — large payloads could spike API costs.
+7. ~~No request size limits~~ — DONE: 32KB middleware in main.py.
 8. JWT tokens are not revocable — stolen tokens stay valid until expiry.
 9. `is_pinned` exists in the conversation schema but has no current product flow.
-10. Daily task run tracking exists, but alerting/notifications for failures still do not.
+10. ~~Daily task run tracking exists, but alerting/notifications for failures still do not.~~ DONE: Resend failure alert email on cron failure.
 11. Alembic exists with only the initial migration so far.
 12. `pytest tests/test_api.py` was observed hanging during collection in Codespaces — may need debugging.
 
 ## Security Checklist (Priority Order)
 
-- [ ] Enable UFW firewall: `ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable`
-- [ ] Get domain and enable HTTPS via Caddy
-- [ ] Add rate limiting with `slowapi` on `/login`, `/register`, `/chat`
+- [x] Enable UFW firewall
+- [x] Get domain and enable HTTPS via Caddy
+- [x] Add rate limiting with slowapi on /login, /register, /chat
+- [x] Add request size limits in FastAPI
+- [x] Add digest failure alerts
 - [ ] Create non-root SSH user and disable root login
-- [ ] Add request size limits in FastAPI
 - [ ] Add JWT token revocation via Redis blocklist
 
 ## Change Log
 
+### 2026-05-02
+
+- added Groq importance ranking before summarization — filters to top-relevance items only
+- expanded RSS feed sources: TechCrunch, VentureBeat, Verge, MIT Tech Review
+- removed broken RSS feeds: OpenAI, Google AI, Microsoft
+- fixed duplicate doc_id on content item insert to prevent UniqueViolation
+- improved deploy: added `--force-recreate` to ensure containers always get new code
+
+### 2026-05-20
+
+- made the digest summarizer resilient to malformed Groq JSON by falling back to local summaries instead of aborting before email send
+
+### 2026-04-29
+
+- fixed cron to use `https://aiintelligencehub.duckdns.org/api/trigger-digest` instead of `http://localhost`
+- updated the daily digest cron entry to call the HTTPS domain on the droplet
+- added a Resend failure alert email to `vinitkhapekar09@gmail.com` when cron fails
+
 ### 2026-04-28
+
+- enabled UFW firewall on droplet (ports 22, 80, 443)
+- added DuckDNS domain and HTTPS via Caddy + Let's Encrypt auto cert
+- added slowapi rate limiting: /login (10/min), /register (5/min), /chat (30/min)
+- moved limiter to core/limiter.py to fix circular import with main.py
+- added 32KB request body size limit middleware in main.py
 
 - added retrying `docker pull` prefetches in `.github/workflows/deploy.yml` so transient Docker Hub timeouts are less likely to break SSH deploys
 - fix: restore correct celery worker command and remove beat schedule (1bdfc2b)
