@@ -166,7 +166,7 @@ docker compose -f docker-compose.yml -f docker-compose.codespaces.yml --profile 
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/Vinitkhapekar/daily-ai-digest.git
+git clone https://github.com/vinitkhapekar09-droid/AI-Intelligenc-Hub
 cd daily-ai-digest
 ```
 
