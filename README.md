@@ -1,4 +1,4 @@
-# 🤖 Daily AI Digest
+# 🤖 AI Intelligence Hub
 
 A production-grade AI-powered newsletter system that automatically fetches the latest AI/ML research and news, summarizes it in plain English using Google Gemini, and delivers it to subscribers via email every morning.
 
