@@ -63,17 +63,6 @@ ai_explore/
 └── README.md
 ```
 
-## 📚 Project Docs
-
-- `docs/AI_PROJECT_CONTEXT.md` - current product and project context
-- `docs/DESIGN.md` - design notes and UI direction
-- `docs/AUTH_SYSTEM_GUIDE.md` - auth architecture and flows
-- `docs/QUICK_START_AUTH.md` - auth setup quick start
-- `docs/FIXES_COMPLETE.md` - implementation fix log
-- `docs/FRONTEND_FIXES_SUMMARY.md` - frontend-focused changes summary
-- `docs/DEPLOY_DIGITALOCEAN.md` - low-cost single-droplet deployment guide
-- `docs/project.txt` - original project outline
-
 ## 🗃️ Database Migrations
 
 The backend now uses Alembic for schema changes.
