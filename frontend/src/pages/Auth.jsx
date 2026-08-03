@@ -24,7 +24,8 @@ function AuthPage() {
   const applyLogin = (data) => {
     const token = data?.token || data?.access_token;
     const name = data?.name || data?.user_name;
-    login(token, name);
+    const email = data?.email || data?.user_email || "";
+    login(token, name, email);
     navigate(nextPath, { replace: true });
   };
 
@@ -34,7 +35,7 @@ function AuthPage() {
     try {
       setLoading(true);
       const { data } = await api.post("/login", loginData);
-      applyLogin(data);
+      applyLogin({ ...data, email: loginData.email });
     } catch (e) {
       setError(e?.response?.data?.detail || "Login failed.");
     } finally {
@@ -48,7 +49,7 @@ function AuthPage() {
     try {
       setLoading(true);
       const { data } = await api.post("/register", registerData);
-      applyLogin(data);
+      applyLogin({ ...data, email: registerData.email });
     } catch (e) {
       setError(e?.response?.data?.detail || "Registration failed.");
     } finally {

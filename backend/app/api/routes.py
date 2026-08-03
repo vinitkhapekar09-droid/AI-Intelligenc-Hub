@@ -213,6 +213,16 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         )
 
 
+@router.get("/me")
+def read_current_user(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    subscriber = db.query(Subscriber).filter(Subscriber.email == current_user.email).first()
+    return {
+        "name": current_user.name,
+        "email": current_user.email,
+        "is_subscribed": bool(subscriber and subscriber.is_active),
+    }
+
+
 @router.post("/subscribe")
 def subscribe(request: SubscribeRequest, db: Session = Depends(get_db)):
     try:

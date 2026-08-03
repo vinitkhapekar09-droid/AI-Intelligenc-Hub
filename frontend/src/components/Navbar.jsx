@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 function navClass({ isActive }) {
@@ -11,9 +12,11 @@ function navClass({ isActive }) {
 }
 
 function Navbar() {
-  const { isLoggedIn, userName, logout } = useAuth();
+  const { isLoggedIn, userName, userEmail, isSubscribed, subscriptionStatusLoaded, setIsSubscribed, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [subscribeLoading, setSubscribeLoading] = useState(false);
+  const [subscribeError, setSubscribeError] = useState("");
   const primaryLinks = isLoggedIn
     ? [
         { to: "/", label: "Home" },
@@ -32,6 +35,30 @@ function Navbar() {
 
   const closeMobileMenu = () => setMobileOpen(false);
 
+  useEffect(() => {
+    setSubscribeError("");
+  }, [isLoggedIn, userEmail, isSubscribed]);
+
+  const subscribeForCurrentUser = async () => {
+    if (!userEmail) {
+      setSubscribeError("Your account email is unavailable right now.");
+      return;
+    }
+
+    try {
+      setSubscribeLoading(true);
+      setSubscribeError("");
+      await api.post("/subscribe", { email: userEmail });
+      setIsSubscribed(true);
+    } catch (e) {
+      setSubscribeError(e?.response?.data?.detail || "Subscription failed.");
+    } finally {
+      setSubscribeLoading(false);
+    }
+  };
+
+  const showSubscribeButton = isLoggedIn && subscriptionStatusLoaded && userEmail && !isSubscribed;
+
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
       <nav className="w-full max-w-7xl mx-auto px-6 py-3">
@@ -46,6 +73,16 @@ function Navbar() {
 
           <div className="hidden md:flex items-center gap-3">
             {isLoggedIn ? <span className="text-sm text-slate-600">{userName}</span> : null}
+            {showSubscribeButton ? (
+              <button
+                onClick={subscribeForCurrentUser}
+                className="rounded border border-emerald-200 bg-emerald-50 px-4 py-2 font-button text-button text-emerald-700 hover:bg-emerald-100 transition-all"
+                disabled={subscribeLoading}
+                type="button"
+              >
+                {subscribeLoading ? "Subscribing..." : "Subscribe"}
+              </button>
+            ) : null}
             {isLoggedIn ? (
               <button onClick={onLogout} className="bg-primary text-on-primary px-4 py-2 rounded font-button text-button hover:opacity-90 transition-all">Logout</button>
             ) : (
@@ -73,8 +110,21 @@ function Navbar() {
                 <NavLink key={link.to} to={link.to} className={navClass} onClick={closeMobileMenu}>{link.label}</NavLink>
               ))}
             </div>
-            <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
-              {isLoggedIn ? <span className="text-sm text-slate-600">{userName}</span> : <span className="text-sm text-slate-500">Sign in for full access</span>}
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                {isLoggedIn ? <span className="text-sm text-slate-600">{userName}</span> : <span className="text-sm text-slate-500">Sign in for full access</span>}
+                {showSubscribeButton ? (
+                  <button
+                    onClick={subscribeForCurrentUser}
+                    className="rounded border border-emerald-200 bg-emerald-50 px-4 py-2 font-button text-button text-emerald-700 hover:bg-emerald-100 transition-all"
+                    disabled={subscribeLoading}
+                    type="button"
+                  >
+                    {subscribeLoading ? "Subscribing..." : "Subscribe"}
+                  </button>
+                ) : null}
+              </div>
+              {subscribeError ? <p className="text-sm text-error">{subscribeError}</p> : null}
               {isLoggedIn ? (
                 <button onClick={onLogout} className="bg-primary text-on-primary px-4 py-2 rounded font-button text-button hover:opacity-90 transition-all">Logout</button>
               ) : (
@@ -84,6 +134,7 @@ function Navbar() {
           </div>
         ) : null}
       </nav>
+      {subscribeError ? <div className="mx-auto max-w-7xl px-6 pb-3 text-sm text-error">{subscribeError}</div> : null}
     </header>
   );
 }
