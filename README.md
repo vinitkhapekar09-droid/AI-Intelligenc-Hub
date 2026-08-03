@@ -145,6 +145,33 @@ Only enable heavier background services when you need them:
 docker compose -f docker-compose.yml -f docker-compose.codespaces.yml --profile full up --build
 ```
 
+## ☁️ AWS EC2 Deployment
+
+This project still deploys through GitHub Actions over SSH, but the server target should now be your EC2 instance instead of a DigitalOcean droplet.
+
+### GitHub secrets to set
+- `EC2_HOST` for the EC2 public IP or DNS name
+- `EC2_SSH_USER` for the login user, usually `ubuntu` on Ubuntu EC2 images
+- `EC2_SSH_PRIVATE_KEY` for the private key that matches the EC2 instance key pair
+- `EC2_APP_DIR` for the checkout path on the instance, for example `/opt/ai-intelligence-hub`
+- `DOCKER_USERNAME` and `DOCKER_PASSWORD` if you still want the Docker Hub image publish job to run
+
+### EC2 instance requirements
+- Docker and Docker Compose installed
+- The repo cloned to the deploy directory referenced by `EC2_APP_DIR`
+- Port 22 open for SSH
+- Port 80 and 443 open if you are serving through Caddy
+- Your DNS record updated to point to the EC2 public IP or Elastic IP
+
+### Production env file on EC2
+The production compose file expects `.env.production` in the repo root. Start from the example file and edit it on the EC2 host:
+
+```bash
+cp .env.production.example .env.production
+```
+
+Then set values for your real domain, API keys, database password, and secret keys before running the production compose stack.
+
 ---
 
 ## 🔄 How It Works
