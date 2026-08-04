@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     TELEGRAM_ENABLED: bool = False
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
 
     # --- New settings for RAG + Agents ---
     # Groq gives free LLM inference — used by chat agent in Phase 2
@@ -66,6 +67,11 @@ class Settings(BaseSettings):
 
         if not self.TRIGGER_DIGEST_TOKEN:
             raise ValueError("TRIGGER_DIGEST_TOKEN must be set in production")
+
+        if self.TELEGRAM_ENABLED and not self.TELEGRAM_WEBHOOK_SECRET:
+            raise ValueError(
+                "TELEGRAM_WEBHOOK_SECRET must be set when Telegram alerts are enabled in production"
+            )
 
         return self
 

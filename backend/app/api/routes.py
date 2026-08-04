@@ -34,6 +34,82 @@ from app.core.limiter import limiter
 router = APIRouter()
 
 
+def _telegram_admin_allowed(chat_id: int | str | None) -> bool:
+    if chat_id is None:
+        return False
+    return str(chat_id) == settings.TELEGRAM_CHAT_ID
+
+
+def _telegram_command_help() -> str:
+    return (
+        "AI Intelligence Hub admin commands:\n"
+        "/users - total registered users\n"
+        "/subscribers - active newsletter subscribers\n"
+        "/status - app, database, and digest status\n"
+        "/latest_digest - latest published digest\n"
+        "/help - show this help"
+    )
+
+
+def _telegram_status_message(db: Session) -> str:
+    user_count = db.query(User).count()
+    subscriber_count = db.query(Subscriber).filter(Subscriber.is_active.is_(True)).count()
+    latest_issue = get_latest_issue(db)
+    latest_task_run = get_latest_task_run(db, "daily_digest")
+
+    latest_issue_line = (
+        f"Latest digest: {latest_issue['issue_date']} - {latest_issue['title']}"
+        if latest_issue
+        else "Latest digest: none"
+    )
+    latest_task_line = (
+        f"Last digest run: {latest_task_run.status} at {latest_task_run.started_at.isoformat()}"
+        if latest_task_run
+        else "Last digest run: none"
+    )
+
+    return (
+        "AI Intelligence Hub status:\n"
+        f"Users: {user_count}\n"
+        f"Active subscribers: {subscriber_count}\n"
+        f"{latest_issue_line}\n"
+        f"{latest_task_line}"
+    )
+
+
+def _telegram_latest_digest_message(db: Session) -> str:
+    latest_issue = get_latest_issue(db)
+    if not latest_issue:
+        return "No digest has been published yet."
+
+    item_count = len(latest_issue.get("items", []))
+    return (
+        "Latest digest:\n"
+        f"Date: {latest_issue['issue_date']}\n"
+        f"Title: {latest_issue['title']}\n"
+        f"Items: {item_count}\n"
+        f"Status: {latest_issue.get('status', 'unknown')}"
+    )
+
+
+def _telegram_command_response(command: str, db: Session) -> str:
+    normalized = command.split()[0].split("@", 1)[0].lower()
+
+    if normalized in {"/start", "/help"}:
+        return _telegram_command_help()
+    if normalized == "/users":
+        return f"Total registered users: {db.query(User).count()}"
+    if normalized == "/subscribers":
+        active_subscribers = db.query(Subscriber).filter(Subscriber.is_active.is_(True)).count()
+        return f"Active newsletter subscribers: {active_subscribers}"
+    if normalized == "/status":
+        return _telegram_status_message(db)
+    if normalized == "/latest_digest":
+        return _telegram_latest_digest_message(db)
+
+    return "Unknown command. Send /help for the list of available admin commands."
+
+
 def verify_trigger_digest_token(x_trigger_token: str | None = Header(default=None)):
     expected_token = settings.TRIGGER_DIGEST_TOKEN.strip()
 
@@ -271,6 +347,40 @@ def unsubscribe(email: EmailStr, db: Session = Depends(get_db)):
             status_code=503,
             detail=f"Database unavailable. Start PostgreSQL or update DATABASE_URL. Error: {e}",
         )
+
+
+@router.post("/telegram/webhook")
+async def telegram_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+):
+    if not settings.TELEGRAM_ENABLED:
+        raise HTTPException(status_code=404, detail="Telegram integration disabled")
+
+    if settings.TELEGRAM_WEBHOOK_SECRET and x_telegram_bot_api_secret_token != settings.TELEGRAM_WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret")
+
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid Telegram payload") from exc
+
+    message = payload.get("message") or payload.get("edited_message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    text = (message.get("text") or "").strip()
+
+    if not _telegram_admin_allowed(chat_id):
+        return {"status": "ignored"}
+
+    if not text:
+        return {"status": "ignored", "reason": "empty message"}
+
+    response_text = _telegram_command_response(text, db)
+    send_telegram_message(response_text, chat_id=str(chat_id))
+
+    return {"status": "ok"}
 
 
 @router.post("/trigger-digest")

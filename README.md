@@ -172,6 +172,29 @@ cp .env.production.example .env.production
 
 Then set values for your real domain, API keys, database password, and secret keys before running the production compose stack.
 
+### Telegram admin commands
+If Telegram alerts are enabled, the bot can also answer admin queries from your approved chat.
+
+Available commands:
+- `/users` - total registered users
+- `/subscribers` - active newsletter subscribers
+- `/status` - app, database, and digest status
+- `/latest_digest` - latest published digest
+- `/help` - command list
+
+Webhook endpoint:
+- `POST /api/telegram/webhook`
+
+The webhook is protected with `TELEGRAM_WEBHOOK_SECRET` and only answers from the configured `TELEGRAM_CHAT_ID`.
+
+To register the webhook after deployment, run:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://your-domain.com/api/telegram/webhook","secret_token":"<YOUR_TELEGRAM_WEBHOOK_SECRET>"}'
+```
+
 ---
 
 ## 🔄 How It Works
