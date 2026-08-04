@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     TRIGGER_DIGEST_TOKEN: str = ""
     EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSIONS: int = 768
+    TELEGRAM_ENABLED: bool = False
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
 
     # --- New settings for RAG + Agents ---
     # Groq gives free LLM inference — used by chat agent in Phase 2

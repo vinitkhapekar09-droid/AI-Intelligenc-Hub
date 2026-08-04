@@ -20,6 +20,7 @@ from ..services.fetcher import fetch_all_items
 from ..services.summarizer import summarize_items
 from ..services.digest_store import store_daily_issue
 from ..services.email_sender import send_digest_to_all
+from ..services.telegram_notifier import send_telegram_message
 from ..services.task_run_service import finish_task_run, start_task_run
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -115,6 +116,9 @@ def run_daily_digest():
         rag_result = _ingest_into_rag(documents, issue_date.isoformat())
 
         print("[task] Pipeline complete.")
+        send_telegram_message(
+            f"Daily digest completed:\nDate: {issue_date.isoformat()}\nSubscribers emailed: {len(emails)}\nRAG status: {rag_result.get('status')}"
+        )
         result = {
             "status": "done",
             "documents_fetched": len(raw_items),
@@ -127,6 +131,9 @@ def run_daily_digest():
         return result
     except Exception as exc:
         result = {"status": "failed", "error": str(exc), "issue_date": issue_date.isoformat()}
+        send_telegram_message(
+            f"Daily digest failed:\nDate: {issue_date.isoformat()}\nError: {exc}"
+        )
         _record_task_finish(task_run.id, "failed", result)
         raise
 

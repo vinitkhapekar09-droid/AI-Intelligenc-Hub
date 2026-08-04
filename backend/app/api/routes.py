@@ -21,6 +21,7 @@ from ..services.digest_store import (
     list_recent_issues,
 )
 from ..services.task_run_service import get_latest_task_run
+from ..services.telegram_notifier import send_telegram_message
 from ..core.auth import (
     hash_password,
     verify_password,
@@ -156,6 +157,10 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
         db.commit()
         db.refresh(new_user)
 
+        send_telegram_message(
+            f"New user joined:\nName: {new_user.name}\nEmail: {new_user.email}"
+        )
+
         access_token = create_access_token(data={"sub": new_user.email})
 
         return TokenResponse(
@@ -235,10 +240,12 @@ def subscribe(request: SubscribeRequest, db: Session = Depends(get_db)):
             else:
                 existing.is_active = True
                 db.commit()
+                send_telegram_message(f"Newsletter reactivated:\nEmail: {request.email}")
                 return {"message": "Welcome back! Subscription reactivated."}
         subscriber = Subscriber(email=request.email)
         db.add(subscriber)
         db.commit()
+        send_telegram_message(f"Newsletter subscribed:\nEmail: {request.email}")
         return {"message": "Successfully subscribed to AI Intelligence Hub updates!"}
     except SQLAlchemyError as e:
         raise HTTPException(
@@ -255,6 +262,7 @@ def unsubscribe(email: EmailStr, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Email not found")
         subscriber.is_active = False
         db.commit()
+        send_telegram_message(f"Newsletter unsubscribed:\nEmail: {email}")
         return {
             "message": "You have been unsubscribed from AI Intelligence Hub updates."
         }
