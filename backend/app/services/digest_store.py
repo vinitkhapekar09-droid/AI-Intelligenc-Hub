@@ -91,8 +91,15 @@ def store_daily_issue(
         db.flush()
 
     stored_items = []
+    seen_doc_ids: set[str] = set()
     for rank, document in enumerate(documents, start=1):
-	# Skip if doc_id already exists in another issue
+	# Skip if doc_id already exists in another issue or repeats in this run.
+        if document.doc_id in seen_doc_ids:
+            continue
+
+        seen_doc_ids.add(document.doc_id)
+
+        # Skip if doc_id already exists in another issue.
         existing = db.query(ContentItem).filter(
             ContentItem.doc_id == document.doc_id
         ).first()
