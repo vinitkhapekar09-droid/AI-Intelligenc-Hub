@@ -3,6 +3,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 from .config import settings
 
 
@@ -18,10 +19,15 @@ def resolve_database_url() -> str:
     if database_url.startswith("sqlite"):
         return database_url
 
+    # Lambda should defer connectivity checks until an actual request/job query.
+    if settings.SERVERLESS_RUNTIME:
+        return database_url
+
     try:
         resolved_engine = create_engine(database_url, pool_pre_ping=True)
         with resolved_engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
+        resolved_engine.dispose()
         return database_url
     except OperationalError as exc:
         if settings.ENVIRONMENT.lower() == "production":
@@ -42,6 +48,13 @@ def _create_engine():
         return create_engine(
             resolved_database_url,
             connect_args={"check_same_thread": False},
+        )
+
+    if settings.SERVERLESS_RUNTIME:
+        return create_engine(
+            resolved_database_url,
+            poolclass=NullPool,
+            pool_pre_ping=True,
         )
 
     return create_engine(resolved_database_url, pool_pre_ping=True)
