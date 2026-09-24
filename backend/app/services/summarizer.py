@@ -4,11 +4,20 @@ import time
 from contextlib import contextmanager
 from urllib.parse import urlparse
 
-import mlflow
 from groq import Groq
 from ..core.config import settings
 
 client = Groq(api_key=settings.GROQ_API_KEY)
+_mlflow_module = None
+
+
+def _get_mlflow():
+    global _mlflow_module
+    if _mlflow_module is None:
+        import mlflow
+        _mlflow_module = mlflow
+    return _mlflow_module
+
 
 RETRY_ATTEMPTS = 3
 RETRY_DELAY = 10
@@ -34,6 +43,7 @@ def _init_mlflow() -> bool:
             return False
 
     try:
+        mlflow = _get_mlflow()
         mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URL)
         mlflow.set_experiment("daily-ai-digest")
         return True
@@ -48,6 +58,7 @@ def _mlflow_run(enabled: bool):
         yield
         return
     try:
+        mlflow = _get_mlflow()
         with mlflow.start_run():
             yield
     except Exception as e:
