@@ -101,7 +101,7 @@ def _telegram_command_response(command: str, db: Session) -> str:
         return f"Total registered users: {db.query(User).count()}"
     if normalized == "/subscribers":
         active_subscribers = db.query(Subscriber).filter(Subscriber.is_active.is_(True)).count()
-        return f"Active newsletter subscribers: {active_subscribers}"
+        return f"Active subscribers: {active_subscribers}"
     if normalized == "/status":
         return _telegram_status_message(db)
     if normalized == "/latest_digest":
@@ -211,123 +211,69 @@ def health_details(db: Session = Depends(get_db)):
 @router.post("/register", response_model=TokenResponse)
 @limiter.limit("5/minute")
 def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
-    """
-    Register a new user account.
-    """
+    """Register a new user account."""
     try:
         existing_user = db.query(User).filter(User.email == body.email).first()
         if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered",
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
         hashed_pwd = hash_password(body.password)
-        new_user = User(
-            name=body.name,
-            email=body.email,
-            hashed_password=hashed_pwd,
-            is_active=True,
-        )
+        new_user = User(name=body.name, email=body.email, hashed_password=hashed_pwd, is_active=True)
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-
-        send_telegram_message(
-            f"New user joined:\nName: {new_user.name}\nEmail: {new_user.email}"
-        )
-
+        send_telegram_message(f"New user joined:\nName: {new_user.name}\nEmail: {new_user.email}")
         access_token = create_access_token(data={"sub": new_user.email})
-
-        return TokenResponse(
-            access_token=access_token,
-            token_type="bearer",
-            user_name=new_user.name,
-        )
+        return TokenResponse(access_token=access_token, token_type="bearer", user_name=new_user.name)
     except HTTPException:
         raise
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable. Error: {e}",
-        )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database unavailable. Error: {e}")
 
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
-    """
-    Login an existing user and return JWT token.
-    """
     try:
         user = db.query(User).filter(User.email == body.email).first()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-            )
-
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         if not verify_password(body.password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password"
-            )
-
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
         if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User account is inactive",
-            )
-
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account is inactive")
         access_token = create_access_token(data={"sub": user.email})
-
-        return TokenResponse(
-            access_token=access_token,
-            token_type="bearer",
-            user_name=user.name,
-        )
+        return TokenResponse(access_token=access_token, token_type="bearer", user_name=user.name)
     except HTTPException:
         raise
     except SQLAlchemyError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable. Error: {e}",
-        )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database unavailable. Error: {e}")
 
 
 @router.get("/me")
 def read_current_user(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     subscriber = db.query(Subscriber).filter(Subscriber.email == current_user.email).first()
-    return {
-        "name": current_user.name,
-        "email": current_user.email,
-        "is_subscribed": bool(subscriber and subscriber.is_active),
-    }
+    return {"name": current_user.name, "email": current_user.email, "is_subscribed": bool(subscriber and subscriber.is_active)}
 
 
 @router.post("/subscribe")
 def subscribe(request: SubscribeRequest, db: Session = Depends(get_db)):
     try:
-        existing = (
-            db.query(Subscriber).filter(Subscriber.email == request.email).first()
-        )
+        existing = db.query(Subscriber).filter(Subscriber.email == request.email).first()
         if existing:
             if existing.is_active:
                 raise HTTPException(status_code=400, detail="Email already subscribed")
-            else:
-                existing.is_active = True
-                db.commit()
-                send_telegram_message(f"Newsletter reactivated:\nEmail: {request.email}")
-                return {"message": "Welcome back! Subscription reactivated."}
-        subscriber = Subscriber(email=request.email)
-        db.add(subscriber)
+            existing.is_active = True
+            db.commit()
+            send_telegram_message(f"Newsletter reactivated:\nEmail: {request.email}")
+            return {"message": "Welcome back! Subscription reactivated."}
+        db.add(Subscriber(email=request.email))
         db.commit()
         send_telegram_message(f"Newsletter subscribed:\nEmail: {request.email}")
         return {"message": "Successfully subscribed to AI Intelligence Hub updates!"}
     except SQLAlchemyError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database unavailable. Start PostgreSQL or update DATABASE_URL. Error: {e}",
-        )
+        raise HTTPException(status_code=503, detail=f"Database unavailable. Start PostgreSQL or update DATABASE_URL. Error: {e}")
 
 
 @router.delete("/unsubscribe")
@@ -339,65 +285,60 @@ def unsubscribe(email: EmailStr, db: Session = Depends(get_db)):
         subscriber.is_active = False
         db.commit()
         send_telegram_message(f"Newsletter unsubscribed:\nEmail: {email}")
-        return {
-            "message": "You have been unsubscribed from AI Intelligence Hub updates."
-        }
+        return {"message": "You have been unsubscribed from AI Intelligence Hub updates."}
     except SQLAlchemyError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database unavailable. Start PostgreSQL or update DATABASE_URL. Error: {e}",
-        )
+        raise HTTPException(status_code=503, detail=f"Database unavailable. Error: {e}")
 
 
 @router.post("/telegram/webhook")
-async def telegram_webhook(
-    request: Request,
-    db: Session = Depends(get_db),
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-):
+async def telegram_webhook(request: Request, db: Session = Depends(get_db), x_telegram_bot_api_secret_token: str | None = Header(default=None)):
     if not settings.TELEGRAM_ENABLED:
         raise HTTPException(status_code=404, detail="Telegram integration disabled")
-
     if settings.TELEGRAM_WEBHOOK_SECRET and x_telegram_bot_api_secret_token != settings.TELEGRAM_WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret")
-
     try:
         payload = await request.json()
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid Telegram payload") from exc
-
     message = payload.get("message") or payload.get("edited_message") or {}
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
-    text = (message.get("text") or "").strip()
-
+    command = (message.get("text") or "").strip()
     if not _telegram_admin_allowed(chat_id):
         return {"status": "ignored"}
-
-    if not text:
+    if not command:
         return {"status": "ignored", "reason": "empty message"}
-
-    response_text = _telegram_command_response(text, db)
-    send_telegram_message(response_text, chat_id=str(chat_id))
-
+    send_telegram_message(_telegram_command_response(command, db), chat_id=str(chat_id))
     return {"status": "ok"}
 
 
 @router.post("/trigger-digest")
 def trigger_digest(_verified: None = Depends(verify_trigger_digest_token)):
-    from ..tasks.digest_tasks import run_daily_digest
+    """Trigger Celery on EC2, or invoke the standalone Lambda digest job."""
+    if settings.REDIS_URL.strip():
+        from ..tasks.digest_tasks import run_daily_digest
+        try:
+            task = run_daily_digest.apply_async(ignore_result=True)
+            return {"message": "Daily digest task triggered", "task_id": task.id}
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Could not enqueue digest task: {exc}")
 
+    function_name = settings.DIGEST_LAMBDA_FUNCTION_NAME.strip()
+    if not function_name:
+        raise HTTPException(status_code=503, detail="Digest scheduler is not configured.")
     try:
-        task = run_daily_digest.apply_async(ignore_result=True)
-        return {"message": "Daily digest task triggered", "task_id": task.id}
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Could not enqueue digest task. Ensure Redis/Celery services are running. "
-                f"Error: {e}"
-            ),
+        import boto3
+        kwargs = {"region_name": settings.AWS_REGION} if settings.AWS_REGION.strip() else {}
+        response = boto3.client("lambda", **kwargs).invoke(
+            FunctionName=function_name,
+            InvocationType="Event",
+            Payload=b'{"source":"ai-intelligence-hub-trigger"}',
         )
+        if response.get("StatusCode") != 202:
+            raise RuntimeError(f"Unexpected Lambda invocation status: {response.get('StatusCode')}")
+        return {"message": "Daily digest Lambda triggered", "function_name": function_name}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Could not trigger digest Lambda: {exc}")
 
 
 # --- Chat and Digest endpoints ---
@@ -420,328 +361,125 @@ class ChatRequest(BaseModel):
 def _parse_issue_date(raw_value: Optional[str]) -> date | None:
     if not raw_value:
         return None
-
     try:
         return date.fromisoformat(raw_value)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="issue_date must use YYYY-MM-DD format",
-        ) from exc
+        raise HTTPException(status_code=400, detail="issue_date must use YYYY-MM-DD format") from exc
 
 
 @router.post("/chat")
 @limiter.limit("30/minute")
-async def chat(
-    request: Request,
-    body: ChatRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    RAG-based chat endpoint with persistent memory.
-    """
+async def chat(request: Request, body: ChatRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     from ..agents.chat_agent import ask
-    from ..services.conversation_service import (
-        save_message,
-        get_conversation_history,
-    )
-
+    from ..services.conversation_service import save_message, get_conversation_history
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
-
     effective_thread_id = body.thread_id or str(uuid4())
-
-    saved_history = get_conversation_history(
-        db,
-        current_user.id,
-        limit=100,
-        thread_id=effective_thread_id,
-    )
-    print(
-        f"[chat] Loaded {len(saved_history)} messages from history for user {current_user.id}"
-    )
-
-    history_for_agent = saved_history if saved_history else None
-
-    result = await ask(
-        question=body.question,
-        n_results=body.n_results,
-        doc_type=body.doc_type,
-        history=history_for_agent,
-        issue_date=body.issue_date,
-    )
-    print(
-        f"[chat] Agent found {result['chunks_found']} chunks, used {len(result['sources'])} sources"
-    )
-
+    saved_history = get_conversation_history(db, current_user.id, limit=100, thread_id=effective_thread_id)
+    result = await ask(question=body.question, n_results=body.n_results, doc_type=body.doc_type, history=saved_history or None, issue_date=body.issue_date)
     try:
-        save_message(
-            db,
-            user_id=current_user.id,
-            role="user",
-            message=body.question,
-            doc_type=body.doc_type,
-            thread_id=effective_thread_id,
-        )
-
-        save_message(
-            db,
-            user_id=current_user.id,
-            role="assistant",
-            message=result["answer"],
-            doc_type=body.doc_type,
-            sources=result["sources"],
-            thread_id=effective_thread_id,
-        )
-    except Exception as e:
-        print(f"[chat] Failed to save conversation history: {e}")
-
-    return {
-        **result,
-        "thread_id": effective_thread_id,
-    }
+        save_message(db, user_id=current_user.id, role="user", message=body.question, doc_type=body.doc_type, thread_id=effective_thread_id)
+        save_message(db, user_id=current_user.id, role="assistant", message=result["answer"], doc_type=body.doc_type, sources=result["sources"], thread_id=effective_thread_id)
+    except Exception as exc:
+        print(f"[chat] Failed to save conversation history: {exc}")
+    return {**result, "thread_id": effective_thread_id}
 
 
 @router.get("/chat/threads")
-def get_chat_threads(
-    limit: int = 30,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_chat_threads(limit: int = 30, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     from ..services.conversation_service import list_conversation_threads
-
     try:
-        threads = list_conversation_threads(
-            db,
-            current_user.id,
-            limit=min(max(limit, 1), 100),
-        )
-        return {
-            "status": "ok",
-            "threads": threads,
-        }
-    except Exception as e:
-        print(f"[chat/threads] Failed to retrieve threads: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve chat threads",
-        )
+        return {"status": "ok", "threads": list_conversation_threads(db, current_user.id, limit=min(max(limit, 1), 100))}
+    except Exception as exc:
+        print(f"[chat/threads] Failed to retrieve threads: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve chat threads")
 
 
 @router.get("/chat/history")
-def get_chat_history(
-    limit: int = 20,
-    thread_id: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_chat_history(limit: int = 20, thread_id: Optional[str] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     from ..services.conversation_service import get_conversation_history
-
     try:
-        history = get_conversation_history(
-            db,
-            current_user.id,
-            limit=limit,
-            thread_id=thread_id,
-        )
-        return {
-            "status": "ok",
-            "message_count": len(history),
-            "messages": history,
-        }
-    except Exception as e:
-        print(f"[chat/history] Failed to retrieve history: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve conversation history",
-        )
+        history = get_conversation_history(db, current_user.id, limit=limit, thread_id=thread_id)
+        return {"status": "ok", "message_count": len(history), "messages": history}
+    except Exception as exc:
+        print(f"[chat/history] Failed to retrieve history: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve conversation history")
 
 
 @router.delete("/chat/history")
-def clear_chat_history(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def clear_chat_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     from ..services.conversation_service import clear_conversation_history
-
     try:
         deleted_count = clear_conversation_history(db, current_user.id)
-        return {
-            "status": "ok",
-            "message": f"Cleared {deleted_count} messages from conversation history",
-            "deleted_count": deleted_count,
-        }
-    except Exception as e:
-        print(f"[chat/history] Failed to clear history: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to clear conversation history",
-        )
+        return {"status": "ok", "message": f"Cleared {deleted_count} messages from conversation history", "deleted_count": deleted_count}
+    except Exception as exc:
+        print(f"[chat/history] Failed to clear history: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to clear chat history")
 
 
 @router.delete("/chat/threads/{thread_id}")
-def delete_chat_thread(
-    thread_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def delete_chat_thread(thread_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     from ..services.conversation_service import clear_conversation_history
-
     try:
-        deleted_count = clear_conversation_history(
-            db,
-            current_user.id,
-            thread_id=thread_id,
-        )
+        deleted_count = clear_conversation_history(db, current_user.id, thread_id=thread_id)
         if deleted_count == 0:
             raise HTTPException(status_code=404, detail="Thread not found")
-
-        return {
-            "status": "ok",
-            "message": f"Deleted {deleted_count} messages from thread",
-            "deleted_count": deleted_count,
-            "thread_id": thread_id,
-        }
+        return {"status": "ok", "message": f"Deleted {deleted_count} messages from thread", "deleted_count": deleted_count, "thread_id": thread_id}
     except HTTPException:
         raise
-    except Exception as e:
-        print(f"[chat/thread-delete] Failed to delete thread: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to delete chat thread",
-        )
+    except Exception as exc:
+        print(f"[chat/thread-delete] Failed to delete thread: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete chat thread")
 
 
 @router.get("/chat/stats")
-def get_chat_stats(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_chat_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     from ..services.conversation_service import get_conversation_summary
-
     try:
-        stats = get_conversation_summary(db, current_user.id)
-        return {
-            "status": "ok",
-            "stats": stats,
-        }
-    except Exception as e:
-        print(f"[chat/stats] Failed to retrieve stats: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve conversation stats",
-        )
+        return {"status": "ok", "stats": get_conversation_summary(db, current_user.id)}
+    except Exception as exc:
+        print(f"[chat/stats] Failed to retrieve stats: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve conversation stats")
 
 
 @router.get("/daily-digest")
-def get_daily_digest(
-    issue_date: Optional[str] = None,
-    db: Session = Depends(get_db),
-):
+def get_daily_digest(issue_date: Optional[str] = None, db: Session = Depends(get_db)):
     parsed_issue_date = _parse_issue_date(issue_date)
-    issue = (
-        get_issue_by_date(db, parsed_issue_date)
-        if parsed_issue_date
-        else get_latest_issue(db)
-    )
-
+    issue = get_issue_by_date(db, parsed_issue_date) if parsed_issue_date else get_latest_issue(db)
     stats = get_collection_stats(db)
     if issue is None:
-        return {
-            "status": "ok",
-            "issue": None,
-            "items": [],
-            "vector_store": stats,
-        }
-
-    return {
-        "status": "ok",
-        "issue": issue,
-        "items": issue["items"],
-        "vector_store": stats,
-    }
+        return {"status": "ok", "issue": None, "items": [], "vector_store": stats}
+    return {"status": "ok", "issue": issue, "items": issue["items"], "vector_store": stats}
 
 
 @router.get("/issues")
-def get_issues(
-    limit: int = 7,
-    db: Session = Depends(get_db),
-):
-    issues = list_recent_issues(db, limit=min(max(limit, 1), 30))
-    return {
-        "status": "ok",
-        "issues": issues,
-    }
+def get_issues(limit: int = 7, db: Session = Depends(get_db)):
+    return {"status": "ok", "issues": list_recent_issues(db, limit=min(max(limit, 1), 30))}
 
 
 @router.get("/issues/{issue_date}")
-def get_issue(
-    issue_date: str,
-    db: Session = Depends(get_db),
-):
+def get_issue(issue_date: str, db: Session = Depends(get_db)):
     parsed_issue_date = _parse_issue_date(issue_date)
     issue = get_issue_by_date(db, parsed_issue_date)
     if issue is None:
         raise HTTPException(status_code=404, detail="Issue not found")
-
-    return {
-        "status": "ok",
-        "issue": issue,
-    }
+    return {"status": "ok", "issue": issue}
 
 
 @router.get("/feed")
-def get_feed(
-    limit: int = 30,
-    issue_date: Optional[str] = None,
-    doc_type: Optional[str] = None,
-    db: Session = Depends(get_db),
-):
+def get_feed(limit: int = 30, issue_date: Optional[str] = None, doc_type: Optional[str] = None, db: Session = Depends(get_db)):
     parsed_issue_date = _parse_issue_date(issue_date)
-    items = list_feed_items(
-        db,
-        limit=min(max(limit, 1), 100),
-        issue_date=parsed_issue_date,
-        doc_type=doc_type,
-    )
-    return {
-        "status": "ok",
-        "items": items,
-    }
+    items = list_feed_items(db, limit=min(max(limit, 1), 100), issue_date=parsed_issue_date, doc_type=doc_type)
+    return {"status": "ok", "items": items}
