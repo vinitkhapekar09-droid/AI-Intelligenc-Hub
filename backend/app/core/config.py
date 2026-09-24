@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # --- Existing settings ---
     DATABASE_URL: str
-    REDIS_URL: str
+    REDIS_URL: str = ""
     GEMINI_API_KEY: str = ""
     RESEND_API_KEY: str = ""
     FROM_EMAIL: str = ""
@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     AUTO_CREATE_SCHEMA: bool = True
     TRIGGER_DIGEST_TOKEN: str = ""
+    DIGEST_LAMBDA_FUNCTION_NAME: str = ""
+    AWS_REGION: str = ""
+    SERVERLESS_RUNTIME: bool = False
     EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSIONS: int = 768
     TELEGRAM_ENABLED: bool = False
