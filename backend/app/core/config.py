@@ -1,9 +1,6 @@
 # core/config.py
 #
 # Single source of truth for all environment variables.
-# WHY pydantic_settings?
-# It validates env vars at startup. If a required var is missing,
-# the app crashes immediately with a clear error — not silently later.
 
 import json
 
@@ -12,9 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # --- Existing settings ---
     DATABASE_URL: str
-    REDIS_URL: str
+    REDIS_URL: str = ""
     GEMINI_API_KEY: str = ""
     RESEND_API_KEY: str = ""
     FROM_EMAIL: str = ""
@@ -27,17 +23,16 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     AUTO_CREATE_SCHEMA: bool = True
     TRIGGER_DIGEST_TOKEN: str = ""
+    DIGEST_LAMBDA_FUNCTION_NAME: str = ""
+    AWS_REGION: str = ""
+    SERVERLESS_RUNTIME: bool = False
     EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSIONS: int = 768
     TELEGRAM_ENABLED: bool = False
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""
-
-    # --- New settings for RAG + Agents ---
-    # Groq gives free LLM inference — used by chat agent in Phase 2
     GROQ_API_KEY: str = ""
-
     APP_BASE_URL: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", enable_decoding=False)
@@ -58,21 +53,14 @@ class Settings(BaseSettings):
     def validate_production_settings(self):
         if self.ENVIRONMENT.lower() != "production":
             return self
-
         if self.SECRET_KEY == "CHANGE_ME":
             raise ValueError("SECRET_KEY must be set to a secure value in production")
-
         if not self.CORS_ORIGINS:
             raise ValueError("CORS_ORIGINS must include at least one frontend origin in production")
-
         if not self.TRIGGER_DIGEST_TOKEN:
             raise ValueError("TRIGGER_DIGEST_TOKEN must be set in production")
-
         if self.TELEGRAM_ENABLED and not self.TELEGRAM_WEBHOOK_SECRET:
-            raise ValueError(
-                "TELEGRAM_WEBHOOK_SECRET must be set when Telegram alerts are enabled in production"
-            )
-
+            raise ValueError("TELEGRAM_WEBHOOK_SECRET must be set when Telegram alerts are enabled in production")
         return self
 
 
