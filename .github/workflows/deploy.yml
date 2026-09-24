@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
 
+# Serialize deployments so two pushes cannot recreate the same Compose
+# containers concurrently. Pending deploys wait for the active deployment.
+concurrency:
+  group: ec2-deploy-main
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy
