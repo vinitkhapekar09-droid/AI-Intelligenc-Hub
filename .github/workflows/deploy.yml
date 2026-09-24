@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
 
-# Serialize deployments so two pushes cannot recreate the same Compose
-# containers concurrently. Pending deploys wait for the active deployment.
+# Serialize GitHub Actions deployments.
 concurrency:
   group: ec2-deploy-main
   cancel-in-progress: false
@@ -26,10 +25,15 @@ jobs:
       - name: Deploy via SSH
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_SSH_USER }}@${{ secrets.EC2_HOST }} "
-            set -e
-            cd ${{ secrets.EC2_APP_DIR || '/opt/ai-intelligence-hub' }}
-            git pull origin main
+            set -euo pipefail
+            exec 9>/tmp/ai_explore_deploy.lock
+            flock 9
+            cd \"${{ secrets.EC2_APP_DIR || '/opt/ai-intelligence-hub' }}\"
+            git fetch origin main
+            git reset --hard origin/main
+            docker compose -f docker-compose.prod.yml down --remove-orphans
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans --force-recreate
             docker image prune -f
+            docker compose -f docker-compose.prod.yml ps
             echo Deploy complete
           "
