@@ -92,13 +92,14 @@ jobs:
 
       - name: Verify Lambda image digests
         env:
-          EXPECTED_URI: ${{ steps.image.outputs.uri }}@${{ steps.digest.outputs.digest }}
+          EXPECTED_DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           for FUNCTION_NAME in ai-hub-api ai-hub-digest; do
             ACTUAL_URI="$(aws lambda get-function \
               --function-name "$FUNCTION_NAME" \
               --query 'Code.ResolvedImageUri' \
               --output text)"
+            ACTUAL_DIGEST="${ACTUAL_URI##*@}"
             STATE="$(aws lambda get-function \
               --function-name "$FUNCTION_NAME" \
               --query 'Configuration.State' \
@@ -107,7 +108,7 @@ jobs:
             echo "$FUNCTION_NAME state=$STATE resolved_image=$ACTUAL_URI"
 
             test "$STATE" = "Active"
-            test "$ACTUAL_URI" = "$EXPECTED_URI"
+            test "$ACTUAL_DIGEST" = "$EXPECTED_DIGEST"
           done
 
       - name: Show published image
