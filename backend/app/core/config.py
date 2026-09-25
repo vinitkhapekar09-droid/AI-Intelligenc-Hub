@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # --- New settings for RAG + Agents ---
     # Groq gives free LLM inference — used by chat agent in Phase 2
     GROQ_API_KEY: str = ""
+    GROQ_SUMMARY_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_CHAT_MODEL: str = "openai/gpt-oss-20b"
 
     APP_BASE_URL: str = "http://localhost:3000"
 
