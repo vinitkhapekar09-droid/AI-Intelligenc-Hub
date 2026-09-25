@@ -9,6 +9,10 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: lambda-ecr-publish
+  cancel-in-progress: true
+
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: ai-intelligence-hub-lambda
