@@ -385,6 +385,34 @@ async def telegram_webhook(
 
 @router.post("/trigger-digest")
 def trigger_digest(_verified: None = Depends(verify_trigger_digest_token)):
+    if settings.SERVERLESS_RUNTIME:
+        function_name = settings.DIGEST_LAMBDA_FUNCTION_NAME.strip()
+        if not function_name:
+            raise HTTPException(
+                status_code=503,
+                detail="Digest scheduler is not configured.",
+            )
+
+        task_id = str(uuid4())
+        try:
+            import boto3
+
+            lambda_client = boto3.client(
+                "lambda",
+                region_name=settings.AWS_REGION.strip() or None,
+            )
+            lambda_client.invoke(
+                FunctionName=function_name,
+                InvocationType="Event",
+                Payload=(f'{{"task_id":"{task_id}"}}').encode("utf-8"),
+            )
+            return {"message": "Daily digest task triggered", "task_id": task_id}
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not invoke digest function. Error: {e}",
+            )
+
     from ..tasks.digest_tasks import run_daily_digest
 
     try:

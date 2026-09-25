@@ -4,11 +4,21 @@ import time
 from contextlib import contextmanager
 from urllib.parse import urlparse
 
-import mlflow
 from groq import Groq
 from ..core.config import settings
 
 client = Groq(api_key=settings.GROQ_API_KEY)
+SUMMARY_MODEL = settings.GROQ_SUMMARY_MODEL.strip() or "openai/gpt-oss-120b"
+_mlflow_module = None
+
+
+def _get_mlflow():
+    global _mlflow_module
+    if _mlflow_module is None:
+        import mlflow
+        _mlflow_module = mlflow
+    return _mlflow_module
+
 
 RETRY_ATTEMPTS = 3
 RETRY_DELAY = 10
@@ -34,6 +44,7 @@ def _init_mlflow() -> bool:
             return False
 
     try:
+        mlflow = _get_mlflow()
         mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URL)
         mlflow.set_experiment("daily-ai-digest")
         return True
@@ -48,6 +59,7 @@ def _mlflow_run(enabled: bool):
         yield
         return
     try:
+        mlflow = _get_mlflow()
         with mlflow.start_run():
             yield
     except Exception as e:
@@ -55,11 +67,11 @@ def _mlflow_run(enabled: bool):
         yield
 
 
-def _mlflow_log(enabled: bool, log_fn, *args, **kwargs) -> None:
+def _mlflow_log(enabled: bool, method_name: str, *args, **kwargs) -> None:
     if not enabled:
         return
     try:
-        log_fn(*args, **kwargs)
+        getattr(_get_mlflow(), method_name)(*args, **kwargs)
     except Exception as e:
         print(f"[summarizer] MLflow log failed: {e}")
 
@@ -184,7 +196,7 @@ def _call_groq_with_retry(prompt: str) -> str | None:
         try:
             print(f"[summarizer] Groq attempt {attempt}/{RETRY_ATTEMPTS}...")
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=SUMMARY_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -273,18 +285,18 @@ def summarize_items(items: list[dict]) -> list[dict]:
                 print("[summarizer] Falling back to local summaries after parse failure.")
                 summaries = [_fallback_summary(item) for item in items]
 
-            _mlflow_log(mlflow_enabled, mlflow.log_param, "model", "llama-3.3-70b-versatile")
-            _mlflow_log(mlflow_enabled, mlflow.log_param, "num_input_items", len(items))
-            _mlflow_log(mlflow_enabled, mlflow.log_param, "prompt_length", len(prompt))
-            _mlflow_log(mlflow_enabled, mlflow.log_metric, "latency_seconds", latency)
-            _mlflow_log(mlflow_enabled, mlflow.log_metric, "num_summaries_returned", len(summaries))
-            _mlflow_log(mlflow_enabled, mlflow.log_text, prompt, "prompt.txt")
-            _mlflow_log(mlflow_enabled, mlflow.log_text, raw_text, "response.txt")
+            _mlflow_log(mlflow_enabled, "log_param", "model", SUMMARY_MODEL)
+            _mlflow_log(mlflow_enabled, "log_param", "num_input_items", len(items))
+            _mlflow_log(mlflow_enabled, "log_param", "prompt_length", len(prompt))
+            _mlflow_log(mlflow_enabled, "log_metric", "latency_seconds", latency)
+            _mlflow_log(mlflow_enabled, "log_metric", "num_summaries_returned", len(summaries))
+            _mlflow_log(mlflow_enabled, "log_text", prompt, "prompt.txt")
+            _mlflow_log(mlflow_enabled, "log_text", raw_text, "response.txt")
 
             print(f"[summarizer] Got {len(summaries)} summaries in {latency}s")
             return summaries
 
         except Exception as e:
-            _mlflow_log(mlflow_enabled, mlflow.log_param, "error", str(e))
+            _mlflow_log(mlflow_enabled, "log_param", "error", str(e))
             print(f"[summarizer] Unexpected error: {e}")
             return [_fallback_summary(item) for item in items]
