@@ -18,9 +18,8 @@ from ..rag.retriever import retrieve
 # Unlike MLflow, it doesn't make network calls at initialization.
 _groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
-# The model we use for chat responses.
-# llama-3.1-8b-instant is fast and free on Groq.
-# WHY not 70b? 8b is sufficient for RAG — the context does the heavy lifting.
+# The model used for chat responses. Keep it configurable so provider
+# deprecations can be handled without code changes.
 CHAT_MODEL = settings.GROQ_CHAT_MODEL.strip() or "openai/gpt-oss-20b"
 
 # Safety limits
