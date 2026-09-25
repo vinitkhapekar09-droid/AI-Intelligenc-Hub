@@ -55,5 +55,64 @@ jobs:
           push: true
           tags: ${{ steps.image.outputs.uri }}
 
+      - name: Resolve published image digest
+        id: digest
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          DIGEST="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+          test -n "$DIGEST"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Published digest: $DIGEST"
+
+      - name: Deploy API Lambda
+        env:
+          FUNCTION_NAME: ai-hub-api
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --image-uri "$IMAGE_URI" \
+            --publish
+
+      - name: Deploy digest Lambda
+        env:
+          FUNCTION_NAME: ai-hub-digest
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --image-uri "$IMAGE_URI" \
+            --publish
+
+      - name: Wait for Lambda deployments
+        run: |
+          aws lambda wait function-updated-v2 --function-name ai-hub-api
+          aws lambda wait function-updated-v2 --function-name ai-hub-digest
+
+      - name: Verify Lambda image digests
+        env:
+          EXPECTED_DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          for FUNCTION_NAME in ai-hub-api ai-hub-digest; do
+            ACTUAL_DIGEST="$(aws lambda get-function \
+              --function-name "$FUNCTION_NAME" \
+              --query 'Code.ImageDigest' \
+              --output text)"
+            STATE="$(aws lambda get-function \
+              --function-name "$FUNCTION_NAME" \
+              --query 'Configuration.State' \
+              --output text)"
+
+            echo "$FUNCTION_NAME state=$STATE digest=$ACTUAL_DIGEST"
+
+            test "$STATE" = "Active"
+            test "$ACTUAL_DIGEST" = "$EXPECTED_DIGEST"
+          done
+
       - name: Show published image
-        run: echo "Published ${{ steps.image.outputs.uri }}"
+        run: echo "Published and deployed ${{ steps.image.outputs.uri }}"
