@@ -47,6 +47,7 @@ jobs:
           echo "uri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Lambda image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -58,16 +59,11 @@ jobs:
       - name: Resolve published image digest
         id: digest
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          DIGEST="$(aws ecr describe-images \
-            --repository-name "$ECR_REPOSITORY" \
-            --image-ids imageTag="$IMAGE_TAG" \
-            --query 'imageDetails[0].imageDigest' \
-            --output text)"
-          test -n "$DIGEST"
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "Published digest: $DIGEST"
+          test -n "$BUILD_DIGEST"
+          echo "digest=$BUILD_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Published digest: $BUILD_DIGEST"
 
       - name: Deploy API Lambda
         env:
