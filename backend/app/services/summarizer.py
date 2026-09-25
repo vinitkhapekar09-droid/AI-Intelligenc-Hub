@@ -8,6 +8,7 @@ from groq import Groq
 from ..core.config import settings
 
 client = Groq(api_key=settings.GROQ_API_KEY)
+SUMMARY_MODEL = settings.GROQ_SUMMARY_MODEL.strip() or "openai/gpt-oss-120b"
 _mlflow_module = None
 
 
@@ -195,7 +196,7 @@ def _call_groq_with_retry(prompt: str) -> str | None:
         try:
             print(f"[summarizer] Groq attempt {attempt}/{RETRY_ATTEMPTS}...")
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=SUMMARY_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -284,7 +285,7 @@ def summarize_items(items: list[dict]) -> list[dict]:
                 print("[summarizer] Falling back to local summaries after parse failure.")
                 summaries = [_fallback_summary(item) for item in items]
 
-            _mlflow_log(mlflow_enabled, "log_param", "model", "llama-3.3-70b-versatile")
+            _mlflow_log(mlflow_enabled, "log_param", "model", SUMMARY_MODEL)
             _mlflow_log(mlflow_enabled, "log_param", "num_input_items", len(items))
             _mlflow_log(mlflow_enabled, "log_param", "prompt_length", len(prompt))
             _mlflow_log(mlflow_enabled, "log_metric", "latency_seconds", latency)
