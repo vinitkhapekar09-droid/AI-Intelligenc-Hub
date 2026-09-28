@@ -78,6 +78,52 @@ jobs:
           TRIGGER_DIGEST_TOKEN=test-trigger-token \
           python -m pytest tests/ -v
 
+  lambda-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Lambda dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-lambda.txt
+          pip install pytest
+
+      - name: Validate Lambda imports
+        env:
+          DATABASE_URL: sqlite:///lambda_validation.db
+          ENVIRONMENT: testing
+          SECRET_KEY: test-secret-key
+          TRIGGER_DIGEST_TOKEN: test-trigger-token
+          CORS_ORIGINS: http://localhost:3000
+          AUTO_CREATE_SCHEMA: "false"
+          SERVERLESS_RUNTIME: "true"
+        run: |
+          python -c "from app.lambda_handler import api_handler, digest_handler; print('Lambda handlers import successfully')" -W default
+        working-directory: backend
+
+      - name: Compile backend
+        run: |
+          python -m compileall -q app
+        working-directory: backend
+
+      - name: Build Lambda container
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Lambda image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/lambda/Dockerfile
+          push: false
+
   frontend:
     runs-on: ubuntu-latest
 
